@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.*
+backend/models/*.joblib
+backend/models/*.pkl
+results/*.json
+node_modules/
+frontend/dist/
+.DS_Store

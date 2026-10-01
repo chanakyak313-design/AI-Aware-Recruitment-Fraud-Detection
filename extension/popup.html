@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Analyzer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup-body">
+    <div class="popup-shell">
+      <p class="eyebrow">SIGNALHIRE INTELLIGENCE</p>
+      <h2>Review job posting</h2>
+      <button id="extractButton" type="button">Extract Visible Job Data</button>
+      <div id="statusText" class="status-text">Extraction is user-triggered and stays on this page until you analyze.</div>
+      <div id="review" class="review-form" hidden>
+        <label>Title<input id="title" /></label>
+        <label>Company<input id="company" /></label>
+        <label>Location<input id="location" /></label>
+        <label>Salary<input id="salary" /></label>
+        <label>Website<input id="website" /></label>
+        <label>Application URL<input id="application_url" /></label>
+        <label>Description<textarea id="description" rows="7"></textarea></label>
+        <button id="analyzeButton" type="button">Analyze Reviewed Job</button>
+      </div>
+      <div id="results" class="result-box"></div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

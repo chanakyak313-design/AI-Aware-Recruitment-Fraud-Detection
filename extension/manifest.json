@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Job Posting Analyzer",
+  "version": "1.0.0",
+  "description": "Analyze job postings for fraud risk and AI-generation signals.",
+  "permissions": ["activeTab", "tabs"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "action": {
+    "default_title": "Analyze This Job",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": [
+        "adapters/linkedin.js",
+        "adapters/indeed.js",
+        "adapters/glassdoor.js",
+        "adapters/naukri.js",
+        "adapters/generic.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
