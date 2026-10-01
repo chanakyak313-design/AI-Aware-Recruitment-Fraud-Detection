@@ -6,7 +6,6 @@ __pycache__/
 venv/
 .env
 .env.*
-backend/models/*.joblib
 backend/models/*.pkl
 results/*.json
 node_modules/
