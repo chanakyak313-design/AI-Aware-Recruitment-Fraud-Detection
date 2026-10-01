@@ -6,4 +6,4 @@ scikit-learn>=1.4
 joblib>=1.4
 python-multipart>=0.0.9
 pytest>=8
-shap>=0.45
+
