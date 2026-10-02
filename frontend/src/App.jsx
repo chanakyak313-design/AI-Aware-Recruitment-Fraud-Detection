@@ -1,0 +1,1419 @@
+
+import { useEffect, useMemo, useState } from 'react';
+import './styles.css';
+import './autopsy.css';
+import './autopsy-interactions.css';
+
+/*
+ * ============================================================
+ * API CONFIGURATION
+ * ============================================================
+ *
+ * VITE_API_URL can be supplied by the deployment environment.
+ * If it is not supplied, the deployed Render API is used.
+ */
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://ai-aware-recruitment-fraud-detection-api.onrender.com';
+
+const emptyForm = {
+  title: '',
+  company: '',
+  location: '',
+  salary: '',
+  employment_type: '',
+  experience: '',
+  website: '',
+  application_url: '',
+  email: '',
+  description: '',
+  requirements: '',
+  benefits: '',
+};
+
+const percent = (value, digits = 1) =>
+  value == null
+    ? 'N/A'
+    : `${(Number(value) * 100).toFixed(digits)}%`;
+
+const labelize = (value) =>
+  String(value || '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const metrics = [
+  'accuracy',
+  'precision',
+  'recall',
+  'f1',
+  'roc_auc',
+  'pr_auc',
+];
+
+function Icon({ children }) {
+  return (
+    <span className="icon" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
+function Sidebar({ tab, setTab, mode, apiAvailable }) {
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-orbit">
+          <span>JS</span>
+        </div>
+
+        <div>
+          <strong>JobShield</strong>
+          <small>AI intelligence</small>
+        </div>
+      </div>
+
+      <div className="sidebar-label">WORKSPACE</div>
+
+      <nav className="side-nav" aria-label="Primary navigation">
+        {[
+          ['overview', 'Overview', '◈'],
+          ['analyzer', 'Analyzer', '⌕'],
+          ['research', 'Research', '▣'],
+          ['methodology', 'Methodology', '⚙'],
+          ['extension', 'Extension', '⇱'],
+        ].map(([id, label, icon]) => (
+          <button
+            key={id}
+            className={tab === id ? 'side-link active' : 'side-link'}
+            onClick={() => setTab(id)}
+          >
+            <Icon>{icon}</Icon>
+            <span>{label}</span>
+
+            {id === 'analyzer' && <b>LIVE</b>}
+          </button>
+        ))}
+      </nav>
+
+      <div className="sidebar-bottom">
+        <div className="status-card">
+          <span
+            className={`status-dot ${apiAvailable ? '' : 'offline'}`}
+          />
+
+          <div>
+            <strong>System status</strong>
+            <small>
+              {apiAvailable ? 'API connected' : 'API unavailable'}
+            </small>
+          </div>
+        </div>
+
+        <small className="version">
+          v1.0 · {mode === 'RESEARCH MODE' ? 'research build' : 'demo build'}
+        </small>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ mode, tab, onAnalyze }) {
+  const section =
+    tab === 'overview'
+      ? 'OVERVIEW'
+      : tab === 'research'
+        ? 'RESEARCH'
+        : tab === 'methodology'
+          ? 'METHODOLOGY'
+          : tab === 'extension'
+            ? 'EXTENSION'
+            : 'ANALYZER';
+
+  return (
+    <header className="topbar">
+      <div>
+        <span className="breadcrumb">
+          JOBSHIELD / <strong>{section}</strong>
+        </span>
+
+        <h1>Recruitment fraud intelligence</h1>
+      </div>
+
+      <div className="top-actions">
+        <span className="mode-badge">
+          <i />
+          {mode}
+        </span>
+
+        <button className="top-analyze" onClick={onAnalyze}>
+          New analysis <span>→</span>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function ScoreRing({ value, kind }) {
+  const numeric = value == null ? 0 : Number(value);
+
+  return (
+    <div
+      className={`score-ring ${kind}`}
+      style={{ '--score': `${numeric * 360}deg` }}
+    >
+      <div>
+        <strong>{percent(value, 1)}</strong>
+        <small>
+          {kind === 'fraud' ? 'fraud probability' : 'AI-generation'}
+        </small>
+      </div>
+    </div>
+  );
+}
+
+function SignalList({ title, items, kind }) {
+  return (
+    <section className={`signal-card ${kind}`}>
+      <div className="card-heading">
+        <span className="heading-icon">
+          {kind === 'fraud' ? '!' : '✦'}
+        </span>
+
+        <div>
+          <span className="overline">
+            {kind === 'fraud' ? 'FRAUD ANALYSIS' : 'WRITING ANALYSIS'}
+          </span>
+
+          <h3>{title}</h3>
+        </div>
+      </div>
+
+      {items?.length ? (
+        <ul>
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`}>
+              <span>↳</span>
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">
+          No indicators reported for this posting.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ShapPanel({ shap }) {
+  if (!shap?.available) {
+    return (
+      <section className="shap-card unavailable">
+        <div className="card-heading">
+          <span className="heading-icon">◌</span>
+
+          <div>
+            <span className="overline">EXPLAINABILITY</span>
+            <h3>Model contributions</h3>
+          </div>
+        </div>
+
+        <p>{shap?.message || 'SHAP explanation unavailable.'}</p>
+      </section>
+    );
+  }
+
+  const max = Math.max(
+    ...(shap.features || []).map((item) =>
+      Math.abs(Number(item.value))
+    ),
+    0.01
+  );
+
+  return (
+    <section className="shap-card">
+      <div className="card-heading">
+        <span className="heading-icon">◌</span>
+
+        <div>
+          <span className="overline">EXPLAINABILITY</span>
+
+          <h3>Why did the model reach this assessment?</h3>
+
+          <p>Feature contributions from the trained fraud model.</p>
+        </div>
+      </div>
+
+      <div className="shap-list">
+        {(shap.features || []).map((item) => (
+          <div className="shap-row" key={item.feature}>
+            <span className="shap-name" title={item.feature}>
+              {labelize(
+                String(item.feature || '').replace(/^.*__/, '')
+              )}
+            </span>
+
+            <div className="shap-track">
+              <i
+                className={
+                  Number(item.value) >= 0 ? 'positive' : 'negative'
+                }
+                style={{
+                  width: `${(Math.abs(Number(item.value)) / max) * 100}%`,
+                }}
+              />
+            </div>
+
+            <strong
+              className={
+                Number(item.value) >= 0
+                  ? 'positive-text'
+                  : 'negative-text'
+              }
+            >
+              {Number(item.value) > 0 ? '+' : ''}
+              {Number(item.value).toFixed(3)}
+            </strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="shap-legend">
+        <span>
+          <i className="positive" /> pushes toward fraud
+        </span>
+
+        <span>
+          <i className="negative" /> pushes away from fraud
+        </span>
+      </div>
+
+      <p className="fine-print">
+        Contributions indicate model behavior, not proof of causation or
+        intent.
+      </p>
+    </section>
+  );
+}
+
+function Analyzer({
+  form,
+  setForm,
+  result,
+  loading,
+  error,
+  onAnalyze,
+  onDemo,
+  onClear,
+  comparisonDraft,
+  setComparisonDraft,
+}) {
+  const update = (event) => {
+    setForm((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }));
+  };
+
+  const loadingSteps = useMemo(
+    () => [
+      'Extracting posting signals',
+      'Scoring fraud indicators',
+      'Analyzing writing patterns',
+      'Preparing explanation',
+    ],
+    []
+  );
+
+  return (
+    <div className="analyzer-grid">
+      <section className="surface editor-card">
+        <div className="section-head">
+          <div>
+            <span className="overline">01 / INPUT</span>
+            <h2>Job posting</h2>
+            <p>
+              Review the visible information before sending it for analysis.
+            </p>
+          </div>
+
+          <span className="live-label">
+            <i />
+            USER-TRIGGERED
+          </span>
+        </div>
+
+        <form onSubmit={onAnalyze}>
+          <div className="field-grid">
+            {[
+              'title',
+              'company',
+              'location',
+              'salary',
+              'employment_type',
+              'experience',
+              'website',
+              'application_url',
+            ].map((field) => (
+              <label className="field" key={field}>
+                <span>{labelize(field)}</span>
+
+                <input
+                  name={field}
+                  value={form[field]}
+                  onChange={update}
+                  placeholder={`Enter ${labelize(field).toLowerCase()}`}
+                />
+              </label>
+            ))}
+          </div>
+
+          <label className="field field-wide editor-field">
+            <span>
+              Description <em>{form.description.length} characters</em>
+            </span>
+
+            <textarea
+              name="description"
+              value={form.description}
+              onChange={update}
+              rows="9"
+              placeholder="Paste the visible job description here..."
+            />
+          </label>
+
+          <div className="optional-row">
+            <label className="field">
+              <span>
+                Requirements <em>optional</em>
+              </span>
+
+              <textarea
+                name="requirements"
+                value={form.requirements}
+                onChange={update}
+                rows="3"
+              />
+            </label>
+
+            <label className="field">
+              <span>
+                Benefits <em>optional</em>
+              </span>
+
+              <textarea
+                name="benefits"
+                value={form.benefits}
+                onChange={update}
+                rows="3"
+              />
+            </label>
+          </div>
+
+          <details className="comparison-editor">
+            <summary>Compare with another listing <span>Optional · enter details you found on another source</span></summary>
+            <div className="field-grid comparison-fields">
+              {['platform', 'title', 'company', 'location', 'salary', 'url'].map((field) => (
+                <label className="field" key={field}>
+                  <span>{labelize(field)}</span>
+                  <input
+                    value={comparisonDraft[field]}
+                    onChange={(event) => setComparisonDraft((current) => ({ ...current, [field]: event.target.value }))}
+                    placeholder={`Other source ${labelize(field).toLowerCase()}`}
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="fine-print">Only the values you enter are compared. This does not search external job sites.</p>
+          </details>
+
+          <div className="form-actions">
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={onDemo}
+            >
+              Load demo
+            </button>
+
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={onClear}
+            >
+              Clear
+            </button>
+
+            <button
+              className="primary-button"
+              disabled={loading}
+            >
+              {loading ? 'Analyzing…' : 'Analyze job'} <span>→</span>
+            </button>
+          </div>
+
+          {error && (
+            <p className="error-text" role="alert">
+              <Icon>!</Icon>
+              {error}
+            </p>
+          )}
+        </form>
+      </section>
+
+      <section className="surface preview-card">
+        <div className="section-head">
+          <div>
+            <span className="overline">02 / OUTPUT</span>
+            <h2>Analysis preview</h2>
+          </div>
+
+          {result && (
+            <span className="complete-label">COMPLETE</span>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="loading-state">
+            <div className="loading-orb">◈</div>
+
+            <h3>Reading the signal</h3>
+
+            {loadingSteps.map((step, index) => (
+              <div className="loading-step" key={step}>
+                <span>
+                  {index < 2 ? '✓' : index === 2 ? '◉' : '○'}
+                </span>
+                {step}
+              </div>
+            ))}
+          </div>
+        ) : result ? (
+          <Result result={result} />
+        ) : (
+          <div className="empty-state">
+            <div className="shield-mark">◈</div>
+
+            <h3>Ready to analyze</h3>
+
+            <p>
+              Submit a job posting to generate an explainable risk
+              assessment.
+            </p>
+
+            <span className="empty-hint">
+              Fraud + AI signals · human review
+            </span>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Result({ result }) {
+  const aiValue = result.ai_generation_probability;
+
+  const aiStatus =
+    aiValue == null
+      ? 'UNAVAILABLE'
+      : Number(aiValue) >= 0.75
+        ? 'POSSIBLE AI-ASSISTED TEXT'
+        : 'LOWER LIKELIHOOD';
+
+  return (
+    <div className="result-content">
+      <div className="risk-header">
+        <div>
+          <span className="overline">RISK ASSESSMENT</span>
+
+          <h3>
+            {result.risk_level || 'REVIEW'} <span>risk</span>
+          </h3>
+        </div>
+
+        <span className="result-mode">{result.mode}</span>
+      </div>
+
+      <div className="score-hero">
+        <div className="hero-score">
+          <ScoreRing
+            value={result.fraud_probability}
+            kind="fraud"
+          />
+
+          <strong>Fraud probability</strong>
+
+          <span>
+            {result.risk_level || 'REVIEW'} RISK
+          </span>
+        </div>
+
+        <div className="ai-score">
+          <span className="overline">AI-GENERATION</span>
+
+          <strong>{percent(aiValue, 1)}</strong>
+
+          <span>{aiStatus}</span>
+
+          <p>
+            Writing origin is analyzed independently from fraudulent
+            intent.
+          </p>
+        </div>
+      </div>
+
+      <div className="result-note">
+        AI-generated content does not inherently indicate fraudulent
+        intent.
+      </div>
+
+      <div className="signals-grid">
+        <SignalList
+          title="Fraud signals"
+          items={result.fraud_indicators}
+          kind="fraud"
+        />
+
+        <SignalList
+          title="AI writing signals"
+          items={result.ai_indicators}
+          kind="ai"
+        />
+      </div>
+
+      {result.autopsy && <JobAutopsy autopsy={result.autopsy} />}
+
+      <ShapPanel shap={result.shap} />
+    </div>
+  );
+}
+
+function JobAutopsy({ autopsy }) {
+  const salary = autopsy.salary || {};
+  const nodes = autopsy.evidence_graph?.nodes || [];
+  const edges = autopsy.evidence_graph?.edges || [];
+  const [filter, setFilter] = useState('all');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const filters = [
+    ['all', 'All evidence'],
+    ['fraud_signal', 'Fraud'],
+    ['writing_signal', 'AI writing'],
+    ['model_contribution', 'SHAP'],
+    ['assessment', 'Decision'],
+  ];
+  const matchesFilter = (node) => filter === 'all' || node.kind === 'posting' || node.kind === 'assessment' || node.kind === filter;
+  const visibleNodes = nodes
+    .map((node, index) => ({ node, index }))
+    .filter(({ node }) => matchesFilter(node));
+  const selectedNode = nodes[selectedIndex];
+  const connectedCount = edges.filter((edge) => edge.from === selectedIndex || edge.to === selectedIndex).length;
+  const completedChecks = (autopsy.safety || []).filter((item) => item.status === 'present' || item.status === 'clear').length;
+
+  return (
+    <section className="autopsy-panel">
+      <div className="autopsy-heading">
+        <div><span className="overline">JOB AUTOPSY / EVIDENCE GRAPH</span><h3>Investigation report</h3><p>{autopsy.summary}</p></div>
+        <span className="autopsy-mark">✳</span>
+      </div>
+      <div className="autopsy-grid">
+        <article className="autopsy-card salary-intel">
+          <div className="autopsy-card-top"><span className="overline">SALARY INTELLIGENCE</span><span className={`salary-state ${salary.status}`}>{salary.status === 'stated' ? 'DISCLOSED' : 'MISSING'}</span></div>
+          <h4>{salary.status === 'stated' ? salary.listed_value : 'Not stated'}</h4>
+          <p>{salary.format ? `${labelize(salary.format)}${salary.currency ? ` · ${salary.currency}` : ''}` : 'Compensation details unavailable'}</p>
+          {salary.flagged_by_existing_signal && <b className="risk-chip">Existing salary signal flagged</b>}
+          <details className="salary-explainer"><summary>How to read this</summary><small>{salary.note}</small></details>
+        </article>
+        <article className="autopsy-card safety-card">
+          <div className="autopsy-card-top"><span className="overline">PRE-APPLICATION SAFETY</span><span className="checks-count">{completedChecks}/{(autopsy.safety || []).length} checks clear</span></div>
+          <div className="safety-list">{(autopsy.safety || []).map((item) => (
+            <div key={item.item} className={`safety-row ${item.status}`}><span>{item.status === 'present' || item.status === 'clear' ? '✓' : item.status === 'risk' ? '!' : '○'}</span><div><strong>{item.item}</strong><small>{item.detail}</small></div></div>
+          ))}</div>
+        </article>
+      </div>
+      <article className="autopsy-card evidence-card">
+        <div className="evidence-head"><div className="card-heading"><span className="heading-icon">⌘</span><div><span className="overline">EVIDENCE GRAPH</span><h4>Explore what shaped the assessment</h4></div></div><span className="graph-count">{nodes.length} nodes · {edges.length} links</span></div>
+        <div className="evidence-filters" role="group" aria-label="Filter evidence graph">
+          {filters.map(([id, label]) => <button className={filter === id ? 'active' : ''} key={id} onClick={() => { setFilter(id); const first = id === 'all' ? 0 : nodes.findIndex((node) => node.kind === id); if (first >= 0) setSelectedIndex(first); }}>{label}</button>)}
+        </div>
+        <div className="evidence-graph">
+          {visibleNodes.map(({ node, index }) => {
+            const connected = index === selectedIndex || edges.some((edge) => (edge.from === selectedIndex && edge.to === index) || (edge.to === selectedIndex && edge.from === index));
+            return <button type="button" aria-pressed={selectedIndex === index} className={`evidence-node ${node.kind} ${selectedIndex === index ? 'selected' : ''} ${connected ? 'connected' : 'dimmed'}`} key={`${node.kind}-${node.label}-${index}`} onClick={() => setSelectedIndex(index)}>
+              <span>{node.kind === 'posting' ? 'JOB' : node.kind === 'assessment' ? 'DECISION' : node.kind === 'model_contribution' ? 'SHAP' : node.kind === 'writing_signal' ? 'AI STYLE' : 'EVIDENCE'}</span>
+              <strong>{node.label}</strong><small>{node.detail}</small>
+            </button>;
+          })}
+        </div>
+        {selectedNode && <div className="selected-evidence"><div><span className="overline">SELECTED EVIDENCE</span><strong>{selectedNode.label}</strong><small>{selectedNode.detail}</small></div><span>{connectedCount} connected links</span></div>}
+        <p className="fine-print">Select a node to highlight its relationships. AI-writing signals are independent of fraud risk; these signals support human review.</p>
+      </article>
+      <article className="autopsy-card consistency-card">
+        <span className="overline">CROSS-SOURCE CONSISTENCY</span>
+        {autopsy.comparisons?.length ? autopsy.comparisons.map((item, index) => <div className="comparison-result" key={`${item.platform}-${index}`}>
+          <strong>{item.platform}</strong><span className={`comparison-status ${item.status}`}>{item.status === 'mismatch' ? 'Mismatch found' : item.status === 'consistent' ? 'Entered fields match' : 'Not enough shared details'}</span>
+          {item.differences?.map((difference) => <p key={difference.field}><b>{difference.field}:</b> {difference.primary} <span>↔</span> {difference.other}</p>)}
+          <small>{item.method}</small>
+          {item.url && <small>{item.url}</small>}
+        </div>) : <p className="muted">Add another listing in the input form to compare its supplied title, company, location, and salary.</p>}
+        <div className="missing-info"><strong>Information still to verify</strong><span>{autopsy.missing_information?.length ? autopsy.missing_information.join(' · ') : 'Core posting details were supplied.'}</span></div>
+      </article>
+    </section>
+  );
+}
+
+function Metric({ name, value }) {
+  return (
+    <div className="metric">
+      <span>{name}</span>
+      <strong>{value ?? '—'}</strong>
+    </div>
+  );
+}
+
+function Research({ research, mode }) {
+  if (!research?.available) {
+    return (
+      <section className="surface unavailable-page">
+        <div className="shield-mark">◈</div>
+
+        <h2>Research results unavailable</h2>
+
+        <p>
+          {research?.status ||
+            'Run the research training pipeline to load held-out evaluation evidence.'}
+        </p>
+      </section>
+    );
+  }
+
+  const fraud = research.fraud_model?.metrics || {};
+  const ai = research.ai_aware_experiments;
+  const composition = research.ai_model?.category_counts || {};
+
+  return (
+    <div className="research-page">
+      <div className="research-title">
+        <div>
+          <span className="overline">EVIDENCE CENTER</span>
+
+          <h2>Model evaluation</h2>
+
+          <p>
+            Evaluation of the trained fraud-detection system on held-out
+            data.
+          </p>
+        </div>
+
+        <span className="mode-badge">
+          <i />
+          {mode}
+        </span>
+      </div>
+
+      <div className="metrics-grid">
+        {metrics.map((metric) => (
+          <Metric
+            key={metric}
+            name={metric.replace('_', '-').toUpperCase()}
+            value={
+              typeof fraud[metric] === 'number'
+                ? fraud[metric].toFixed(4)
+                : fraud[metric]
+            }
+          />
+        ))}
+      </div>
+
+      <div className="research-columns">
+        <section className="surface research-card">
+          <div className="card-heading">
+            <span className="heading-icon">◆</span>
+
+            <div>
+              <span className="overline">
+                DATASET COMPOSITION
+              </span>
+
+              <h3>EMSCAD / Fake Job Postings</h3>
+            </div>
+          </div>
+
+          <div className="dataset-total">
+            <strong>
+              {research.dataset_rows?.toLocaleString()}
+            </strong>
+
+            <span>postings evaluated</span>
+          </div>
+
+          <div className="composition">
+            <div>
+              <span>
+                Legitimate{' '}
+                <b>
+                  {research.legitimate_samples?.toLocaleString()}
+                </b>
+              </span>
+
+              <i
+                style={{
+                  width: `${
+                    research.dataset_rows
+                      ? (research.legitimate_samples /
+                          research.dataset_rows) *
+                        100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+
+            <div>
+              <span>
+                Fraudulent{' '}
+                <b>
+                  {research.fraud_samples?.toLocaleString()}
+                </b>
+              </span>
+
+              <i
+                style={{
+                  width: `${
+                    research.dataset_rows
+                      ? (research.fraud_samples /
+                          research.dataset_rows) *
+                        100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="research-facts">
+            <span>
+              Train / test{' '}
+              <b>
+                {research.split?.train_size} /{' '}
+                {research.split?.test_size}
+              </b>
+            </span>
+
+            <span>
+              Model <b>{research.fraud_model?.type}</b>
+            </span>
+          </div>
+        </section>
+
+        <section className="surface research-card">
+          <div className="card-heading">
+            <span className="heading-icon">⇄</span>
+
+            <div>
+              <span className="overline">
+                MODEL COMPARISON
+              </span>
+
+              <h3>Baseline vs AI-aware</h3>
+            </div>
+          </div>
+
+          {ai ? (
+            <div className="comparison-table">
+              <div className="table-row table-head">
+                <span>Metric</span>
+                <b>AI-aware</b>
+                <b>Difference</b>
+              </div>
+
+              {metrics.map((metric) => (
+                <div className="table-row" key={metric}>
+                  <span>{metric.toUpperCase()}</span>
+
+                  <b>{ai.metrics?.[metric] ?? '—'}</b>
+
+                  <b
+                    className={
+                      Number(ai.difference?.[metric]) >= 0
+                        ? 'delta-up'
+                        : 'delta-down'
+                    }
+                  >
+                    {ai.difference?.[metric] ?? '—'}
+                  </b>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">
+              AI-aware experiment unavailable.
+            </p>
+          )}
+        </section>
+      </div>
+
+      <section className="surface research-card">
+        <div className="card-heading">
+          <span className="heading-icon">✦</span>
+
+          <div>
+            <span className="overline">
+              CONTROLLED CORPUS
+            </span>
+
+            <h3>AI-generation study composition</h3>
+
+            <p>
+              Synthetic research corpus — not a substitute for
+              real-world AI detection evidence.
+            </p>
+          </div>
+        </div>
+
+        <div className="corpus-grid">
+          {[
+            [
+              'AI-generated legitimate',
+              composition.ai_generated_legitimate,
+            ],
+            [
+              'AI-generated fraudulent',
+              composition.ai_generated_fraudulent,
+            ],
+            [
+              'Human-written legitimate',
+              composition.human_written_legitimate,
+            ],
+            [
+              'Human-written fraudulent',
+              composition.human_written_fraudulent,
+            ],
+          ].map(([name, value]) => (
+            <div key={name}>
+              <span>{name}</span>
+              <strong>{value ?? '—'}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="method-strip">
+        <span>METHOD</span>
+
+        {[
+          'Dataset',
+          'Preprocessing',
+          'Feature engineering',
+          'Fraud model',
+          'AI stylometry',
+          'SHAP',
+          'Risk assessment',
+        ].map((item, index) => (
+          <div key={item}>
+            <b>0{index + 1}</b>
+            {item}
+            {index < 6 && <i>→</i>}
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function Overview({ modelInfo, setTab }) {
+  return (
+    <section className="overview-page">
+      <div className="hero-panel">
+        <div className="hero-copy">
+          <span className="overline">
+            JOB FRAUD INTELLIGENCE
+          </span>
+
+          <h2>
+            Detect suspicious job postings{' '}
+            <em>before they become a risk.</em>
+          </h2>
+
+          <p>
+            JobShield separates fraudulent-intent signals from
+            AI-generated writing signals so every assessment stays
+            explainable, evidence-based, and human-reviewed.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={() => setTab('analyzer')}
+          >
+            Analyze a job <span>→</span>
+          </button>
+        </div>
+
+        <div className="pipeline-visual">
+          <span className="pipeline-label">
+            ANALYSIS PIPELINE
+          </span>
+
+          {[
+            ['01', 'JOB POSTING', 'Visible posting data'],
+            [
+              '02',
+              'FEATURE EXTRACTION',
+              'Text + structured signals',
+            ],
+            [
+              '03',
+              'DUAL MODELS',
+              'Fraud + AI independently',
+            ],
+            [
+              '04',
+              'EXPLAINABLE RESULT',
+              'Scores, signals, SHAP',
+            ],
+          ].map(([num, title, sub], index) => (
+            <div className="pipeline-step" key={title}>
+              <b>{num}</b>
+
+              <div>
+                <strong>{title}</strong>
+                <small>{sub}</small>
+              </div>
+
+              {index < 3 && <i>↓</i>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="overview-head">
+        <div>
+          <span className="overline">
+            SYSTEM OVERVIEW
+          </span>
+
+          <h2>Evidence at a glance</h2>
+        </div>
+
+        <span className="muted">
+          Live from research artifacts
+        </span>
+      </div>
+
+      <div className="overview-metrics">
+        <Metric
+          name="Dataset"
+          value={
+            modelInfo?.dataset_rows?.toLocaleString() || '—'
+          }
+        />
+
+        <Metric
+          name="Fraud samples"
+          value={
+            modelInfo?.fraud_samples?.toLocaleString() || '—'
+          }
+        />
+
+        <Metric
+          name="Fraud model"
+          value={modelInfo?.fraud_model?.type || '—'}
+        />
+
+        <Metric
+          name="Explainability"
+          value="SHAP"
+        />
+      </div>
+    </section>
+  );
+}
+
+function Methodology({ setTab }) {
+  const steps = [
+    [
+      '01',
+      'Job posting',
+      'Visible text and structured details are reviewed before any request is sent.',
+    ],
+    [
+      '02',
+      'Feature extraction',
+      'Text, contact, salary, company, and posting signals become model features.',
+    ],
+    [
+      '03',
+      'Independent models',
+      'A fraud classifier and stylometric AI classifier produce separate probabilities.',
+    ],
+    [
+      '04',
+      'Explainable result',
+      'Risk, indicators, and genuine SHAP contributions support human review.',
+    ],
+  ];
+
+  return (
+    <section className="methodology-page">
+      <div className="methodology-intro">
+        <span className="overline">
+          ABOUT / METHODOLOGY
+        </span>
+
+        <h2>
+          From posting to <em>evidence.</em>
+        </h2>
+
+        <p>
+          JobShield is designed as a decision-support workflow:
+          transparent enough for a mini-project viva, and disciplined
+          enough not to treat AI-written text as proof of fraud.
+        </p>
+
+        <button
+          className="primary-button"
+          onClick={() => setTab('analyzer')}
+        >
+          Open analyzer <span>→</span>
+        </button>
+      </div>
+
+      <div className="methodology-flow">
+        {steps.map(([number, title, copy], index) => (
+          <article className="methodology-step" key={title}>
+            <span>{number}</span>
+
+            <div>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </div>
+
+            {index < steps.length - 1 && <i>→</i>}
+          </article>
+        ))}
+      </div>
+
+      <div className="methodology-note">
+        <strong>Research boundary</strong>
+
+        <span>
+          EMSCAD supplies the fraud labels. The controlled AI corpus
+          supplies independent AI-generation labels. Neither signal is
+          used as a shortcut for the other.
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState('overview');
+  const [form, setForm] = useState(emptyForm);
+  const [result, setResult] = useState(null);
+  const [modelInfo, setModelInfo] = useState(null);
+  const [research, setResearch] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [apiAvailable, setApiAvailable] = useState(false);
+  const [comparisonDraft, setComparisonDraft] = useState({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
+
+  /*
+   * ============================================================
+   * BACKEND HEALTH / INITIAL DATA
+   * ============================================================
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadApiData = async () => {
+      try {
+        setError('');
+
+        /*
+         * Do the requests independently so that a failure of the
+         * research endpoint does not make the entire API appear
+         * disconnected if /api/model-info is working.
+         */
+        const [infoResponse, researchResponse] =
+          await Promise.allSettled([
+            fetch(`${API_BASE_URL}/api/model-info`),
+            fetch(`${API_BASE_URL}/api/research-results`),
+          ]);
+
+        if (cancelled) return;
+
+        let info = null;
+        let researchData = null;
+        let infoWorking = false;
+
+        if (
+          infoResponse.status === 'fulfilled' &&
+          infoResponse.value.ok
+        ) {
+          try {
+            info = await infoResponse.value.json();
+            infoWorking = true;
+          } catch (jsonError) {
+            console.error(
+              'Invalid model-info response:',
+              jsonError
+            );
+          }
+        }
+
+        if (
+          researchResponse.status === 'fulfilled' &&
+          researchResponse.value.ok
+        ) {
+          try {
+            researchData = await researchResponse.value.json();
+          } catch (jsonError) {
+            console.error(
+              'Invalid research response:',
+              jsonError
+            );
+          }
+        }
+
+        setModelInfo(info);
+        setResearch(researchData);
+        setApiAvailable(infoWorking);
+      } catch (requestError) {
+        if (cancelled) return;
+
+        console.error('API connection error:', requestError);
+
+        setModelInfo(null);
+        setResearch(null);
+        setApiAvailable(false);
+      }
+    };
+
+    loadApiData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const mode = modelInfo?.mode || 'DEMO MODE';
+
+  /*
+   * ============================================================
+   * DEMO DATA
+   * ============================================================
+   */
+  const tryDemo = () => {
+    setForm({
+      ...emptyForm,
+      title: 'Urgent Hiring Data Entry Clerk',
+      company: 'FastCashNow',
+      location: 'Remote',
+      salary: '$2000 - $5000 per day',
+      email: 'applyfastcashnow@gmail.com',
+      website: 'https://fastcashnow.xyz',
+      description:
+        'Urgent hiring now! Work from home and start today. Applicants must pay a registration fee and send bank details to begin onboarding.',
+      requirements:
+        'No experience required. Anyone can apply.',
+      benefits:
+        'Flexible working hours and immediate joining.',
+    });
+
+    setResult(null);
+    setError('');
+    setComparisonDraft({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
+    setTab('analyzer');
+  };
+
+  /*
+   * ============================================================
+   * CLEAR
+   * ============================================================
+   */
+  const clearForm = () => {
+    setForm(emptyForm);
+    setResult(null);
+    setError('');
+    setComparisonDraft({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
+  };
+
+  /*
+   * ============================================================
+   * ANALYZE
+   * ============================================================
+   */
+  const analyze = async (event) => {
+    event.preventDefault();
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      if (!API_BASE_URL) {
+        throw new Error('Backend API URL is not configured.');
+      }
+
+      /*
+       * Basic validation before making the request.
+       */
+      if (!form.title.trim() && !form.description.trim()) {
+        throw new Error(
+          'Please enter a job title or description before analysis.'
+        );
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/analyze`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...form,
+            comparison_sources: Object.values(comparisonDraft).some((value) => value.trim()) ? [comparisonDraft] : [],
+          }),
+        }
+      );
+
+      let body = null;
+
+      try {
+        body = await response.json();
+      } catch {
+        throw new Error(
+          `Backend returned HTTP ${response.status} with an invalid response.`
+        );
+      }
+
+      if (!response.ok) {
+        const detail =
+          typeof body?.detail === 'string'
+            ? body.detail
+            : Array.isArray(body?.detail)
+              ? body.detail
+                  .map((item) =>
+                    item?.msg || JSON.stringify(item)
+                  )
+                  .join(', ')
+              : null;
+
+        throw new Error(
+          detail ||
+            `Analysis failed (HTTP ${response.status}).`
+        );
+      }
+
+      setResult(body);
+      setApiAvailable(true);
+    } catch (requestError) {
+      console.error('Analysis error:', requestError);
+
+      const message = requestError?.message || '';
+
+      if (
+        message.includes('Failed to fetch') ||
+        message.includes('NetworkError') ||
+        message.includes('Load failed')
+      ) {
+        setApiAvailable(false);
+
+        setError(
+          `Cannot connect to backend. API: ${API_BASE_URL}`
+        );
+      } else {
+        setError(
+          message || 'Unable to reach the analysis backend.'
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="app-frame">
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        mode={mode}
+        apiAvailable={apiAvailable}
+      />
+
+      <main className="main-content">
+        <Topbar
+          mode={mode}
+          tab={tab}
+          onAnalyze={() => setTab('analyzer')}
+        />
+
+        {tab === 'overview' && (
+          <Overview
+            modelInfo={modelInfo}
+            setTab={setTab}
+          />
+        )}
+
+        {tab === 'analyzer' && (
+          <Analyzer
+            form={form}
+            setForm={setForm}
+            result={result}
+            loading={loading}
+            error={error}
+            onAnalyze={analyze}
+            onDemo={tryDemo}
+            onClear={clearForm}
+            comparisonDraft={comparisonDraft}
+            setComparisonDraft={setComparisonDraft}
+          />
+        )}
+
+        {tab === 'research' && (
+          <Research
+            research={research}
+            mode={mode}
+          />
+        )}
+
+        {tab === 'methodology' && (
+          <Methodology setTab={setTab} />
+        )}
+
+        {tab === 'extension' && (
+          <section className="surface extension-page">
+            <span className="overline">
+              BROWSER WORKFLOW
+            </span>
+
+            <h2>Analyze where the job lives.</h2>
+
+            <p>
+              The Manifest V3 extension extracts visible job
+              information, lets you review it, and sends it only when
+              you click Analyze. Dedicated adapters and a generic
+              fallback keep the workflow ready for multiple portals.
+            </p>
+
+            <button
+              className="primary-button"
+              onClick={() => setTab('analyzer')}
+            >
+              Open analyzer <span>→</span>
+            </button>
+          </section>
+        )}
+
+        <footer>
+          JobShield AI <span>·</span> Decision support only. AI-generated
+          content does not inherently indicate fraudulent intent.
+        </footer>
+      </main>
+    </div>
+  );
+}
+
+export default App;

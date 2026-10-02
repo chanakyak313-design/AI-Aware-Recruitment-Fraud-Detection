@@ -1,0 +1,127 @@
+{
+  "mode": "research",
+  "mode_label": "RESEARCH MODE",
+  "dataset_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\data\\raw\\fake_job_postings.csv",
+  "dataset_rows": 17880,
+  "dataset_columns": [
+    "job_id",
+    "title",
+    "location",
+    "department",
+    "salary_range",
+    "company_profile",
+    "description",
+    "requirements",
+    "benefits",
+    "telecommuting",
+    "has_company_logo",
+    "has_questions",
+    "employment_type",
+    "required_experience",
+    "required_education",
+    "industry",
+    "function",
+    "fraudulent"
+  ],
+  "duplicate_rows": 0,
+  "missing_values": 70106,
+  "fraud_samples": 866,
+  "legitimate_samples": 17014,
+  "fraud_rate": 0.0484,
+  "split": {
+    "train_size": 14304,
+    "test_size": 3576,
+    "random_seed": 42
+  },
+  "fraud_model": {
+    "type": "LogisticRegression + TF-IDF + structured features",
+    "metrics": {
+      "accuracy": 0.965,
+      "precision": 0.593,
+      "recall": 0.8844,
+      "f1": 0.71,
+      "roc_auc": 0.9759,
+      "pr_auc": 0.8438,
+      "confusion_matrix": [
+        [
+          3298,
+          105
+        ],
+        [
+          20,
+          153
+        ]
+      ]
+    }
+  },
+  "ai_model": {
+    "available": true,
+    "reason": null,
+    "corpus_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\data\\ai_corpus\\ai_labeled_corpus.csv",
+    "corpus_type": "Synthetic research corpus",
+    "corpus_rows": 40,
+    "category_counts": {
+      "ai_generated_legitimate": 10,
+      "ai_generated_fraudulent": 10,
+      "human_written_legitimate": 10,
+      "human_written_fraudulent": 10
+    },
+    "split": {
+      "train_size": 30,
+      "test_size": 10,
+      "random_seed": 42
+    },
+    "metrics": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "confusion_matrix": [
+        [
+          5,
+          0
+        ],
+        [
+          0,
+          5
+        ]
+      ]
+    }
+  },
+  "ai_aware_experiments": {
+    "available": true,
+    "metrics": {
+      "accuracy": 0.9645,
+      "precision": 0.5891,
+      "recall": 0.8786,
+      "f1": 0.7053,
+      "roc_auc": 0.9757,
+      "pr_auc": 0.845,
+      "confusion_matrix": [
+        [
+          3297,
+          106
+        ],
+        [
+          21,
+          152
+        ]
+      ]
+    },
+    "difference": {
+      "accuracy": -0.0005,
+      "precision": -0.0039,
+      "recall": -0.0058,
+      "f1": -0.0047,
+      "roc_auc": -0.0002,
+      "pr_auc": 0.0012
+    }
+  },
+  "shap": {
+    "background_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\backend\\models\\fraud_shap_background.joblib",
+    "feature_count": 8662
+  },
+  "timestamp_utc": "2026-10-01T06:28:18.276138+00:00"
+}
