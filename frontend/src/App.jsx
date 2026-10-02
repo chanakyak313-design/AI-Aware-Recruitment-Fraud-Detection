@@ -1,10 +1,18 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import './styles.css';
 
-const API_BASE = (
+/*
+ * ============================================================
+ * API CONFIGURATION
+ * ============================================================
+ *
+ * VITE_API_URL can be supplied by the deployment environment.
+ * If it is not supplied, the deployed Render API is used.
+ */
+const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
-  'https://ai-aware-recruitment-fraud-detection-api.onrender.com'
-).replace(/\/$/, '');
+  'https://ai-aware-recruitment-fraud-detection-api.onrender.com';
 
 const emptyForm = {
   title: '',
@@ -22,7 +30,9 @@ const emptyForm = {
 };
 
 const percent = (value, digits = 1) =>
-  value == null ? 'N/A' : `${(Number(value) * 100).toFixed(digits)}%`;
+  value == null
+    ? 'N/A'
+    : `${(Number(value) * 100).toFixed(digits)}%`;
 
 const labelize = (value) =>
   String(value || '')
@@ -237,28 +247,30 @@ function ShapPanel({ shap }) {
         {(shap.features || []).map((item) => (
           <div className="shap-row" key={item.feature}>
             <span className="shap-name" title={item.feature}>
-              {labelize(item.feature.replace(/^.*__/, ''))}
+              {labelize(
+                String(item.feature || '').replace(/^.*__/, '')
+              )}
             </span>
 
             <div className="shap-track">
               <i
                 className={
-                  item.value >= 0 ? 'positive' : 'negative'
+                  Number(item.value) >= 0 ? 'positive' : 'negative'
                 }
                 style={{
-                  width: `${(Math.abs(item.value) / max) * 100}%`,
+                  width: `${(Math.abs(Number(item.value)) / max) * 100}%`,
                 }}
               />
             </div>
 
             <strong
               className={
-                item.value >= 0
+                Number(item.value) >= 0
                   ? 'positive-text'
                   : 'negative-text'
               }
             >
-              {item.value > 0 ? '+' : ''}
+              {Number(item.value) > 0 ? '+' : ''}
               {Number(item.value).toFixed(3)}
             </strong>
           </div>
@@ -347,9 +359,7 @@ function Analyzer({
                   name={field}
                   value={form[field]}
                   onChange={update}
-                  placeholder={`Enter ${labelize(
-                    field
-                  ).toLowerCase()}`}
+                  placeholder={`Enter ${labelize(field).toLowerCase()}`}
                 />
               </label>
             ))}
@@ -654,9 +664,11 @@ function Research({ research, mode }) {
               <i
                 style={{
                   width: `${
-                    (research.legitimate_samples /
-                      research.dataset_rows) *
-                    100
+                    research.dataset_rows
+                      ? (research.legitimate_samples /
+                          research.dataset_rows) *
+                        100
+                      : 0
                   }%`,
                 }}
               />
@@ -673,9 +685,11 @@ function Research({ research, mode }) {
               <i
                 style={{
                   width: `${
-                    (research.fraud_samples /
-                      research.dataset_rows) *
-                    100
+                    research.dataset_rows
+                      ? (research.fraud_samples /
+                          research.dataset_rows) *
+                        100
+                      : 0
                   }%`,
                 }}
               />
@@ -1008,7 +1022,9 @@ function App() {
   const [apiAvailable, setApiAvailable] = useState(false);
 
   /*
-   * Check backend when the frontend loads.
+   * ============================================================
+   * BACKEND HEALTH / INITIAL DATA
+   * ============================================================
    */
   useEffect(() => {
     let cancelled = false;
@@ -1017,32 +1033,55 @@ function App() {
       try {
         setError('');
 
+        /*
+         * Do the requests independently so that a failure of the
+         * research endpoint does not make the entire API appear
+         * disconnected if /api/model-info is working.
+         */
         const [infoResponse, researchResponse] =
-          await Promise.all([
-            fetch(`${API_BASE}/api/model-info`),
-            fetch(`${API_BASE}/api/research-results`),
+          await Promise.allSettled([
+            fetch(`${API_BASE_URL}/api/model-info`),
+            fetch(`${API_BASE_URL}/api/research-results`),
           ]);
-
-        if (!infoResponse.ok) {
-          throw new Error(
-            `Model info request failed: HTTP ${infoResponse.status}`
-          );
-        }
-
-        if (!researchResponse.ok) {
-          throw new Error(
-            `Research request failed: HTTP ${researchResponse.status}`
-          );
-        }
-
-        const info = await infoResponse.json();
-        const researchData = await researchResponse.json();
 
         if (cancelled) return;
 
+        let info = null;
+        let researchData = null;
+        let infoWorking = false;
+
+        if (
+          infoResponse.status === 'fulfilled' &&
+          infoResponse.value.ok
+        ) {
+          try {
+            info = await infoResponse.value.json();
+            infoWorking = true;
+          } catch (jsonError) {
+            console.error(
+              'Invalid model-info response:',
+              jsonError
+            );
+          }
+        }
+
+        if (
+          researchResponse.status === 'fulfilled' &&
+          researchResponse.value.ok
+        ) {
+          try {
+            researchData = await researchResponse.value.json();
+          } catch (jsonError) {
+            console.error(
+              'Invalid research response:',
+              jsonError
+            );
+          }
+        }
+
         setModelInfo(info);
         setResearch(researchData);
-        setApiAvailable(true);
+        setApiAvailable(infoWorking);
       } catch (requestError) {
         if (cancelled) return;
 
@@ -1063,6 +1102,11 @@ function App() {
 
   const mode = modelInfo?.mode || 'DEMO MODE';
 
+  /*
+   * ============================================================
+   * DEMO DATA
+   * ============================================================
+   */
   const tryDemo = () => {
     setForm({
       ...emptyForm,
@@ -1085,12 +1129,22 @@ function App() {
     setTab('analyzer');
   };
 
+  /*
+   * ============================================================
+   * CLEAR
+   * ============================================================
+   */
   const clearForm = () => {
     setForm(emptyForm);
     setResult(null);
     setError('');
   };
 
+  /*
+   * ============================================================
+   * ANALYZE
+   * ============================================================
+   */
   const analyze = async (event) => {
     event.preventDefault();
 
@@ -1099,17 +1153,29 @@ function App() {
     setResult(null);
 
     try {
-      if (!API_BASE) {
+      if (!API_BASE_URL) {
         throw new Error('Backend API URL is not configured.');
       }
 
-      const response = await fetch(`${API_BASE}/api/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(form),
-      });
+      /*
+       * Basic validation before making the request.
+       */
+      if (!form.title.trim() && !form.description.trim()) {
+        throw new Error(
+          'Please enter a job title or description before analysis.'
+        );
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/analyze`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(form),
+        }
+      );
 
       let body = null;
 
@@ -1125,27 +1191,40 @@ function App() {
         const detail =
           typeof body?.detail === 'string'
             ? body.detail
-            : body?.detail?.[0]?.msg;
+            : Array.isArray(body?.detail)
+              ? body.detail
+                  .map((item) =>
+                    item?.msg || JSON.stringify(item)
+                  )
+                  .join(', ')
+              : null;
 
         throw new Error(
-          detail || `Analysis failed (HTTP ${response.status}).`
+          detail ||
+            `Analysis failed (HTTP ${response.status}).`
         );
       }
 
       setResult(body);
+      setApiAvailable(true);
     } catch (requestError) {
       console.error('Analysis error:', requestError);
 
+      const message = requestError?.message || '';
+
       if (
-        requestError.message?.includes('Failed to fetch')
+        message.includes('Failed to fetch') ||
+        message.includes('NetworkError') ||
+        message.includes('Load failed')
       ) {
+        setApiAvailable(false);
+
         setError(
-          `Cannot connect to backend. API: ${API_BASE}`
+          `Cannot connect to backend. API: ${API_BASE_URL}`
         );
       } else {
         setError(
-          requestError.message ||
-            'Unable to reach the analysis backend.'
+          message || 'Unable to reach the analysis backend.'
         );
       }
     } finally {
