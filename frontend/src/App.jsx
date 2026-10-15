@@ -39,6 +39,72 @@ const emptyForm = {
   benefits: '',
 };
 
+const DEMO_PRESETS = [
+  {
+    id: 'suspicious',
+    label: 'Suspicious posting (Illustrative)',
+    data: {
+      title: 'Urgent Hiring Data Entry Clerk',
+      company: 'FastCashNow',
+      location: 'Remote',
+      salary: '$2000 - $5000 per day',
+      employment_type: 'Full-time',
+      experience: 'Entry level',
+      website: 'https://fastcashnow.xyz',
+      application_url: '',
+      email: 'applyfastcashnow@gmail.com',
+      description:
+        'Urgent hiring now! Work from home and start today. Applicants must pay a registration fee and send bank details to begin onboarding immediately.',
+      requirements:
+        'No experience required. Anyone can apply.',
+      benefits:
+        'Flexible working hours and immediate joining.',
+    },
+  },
+  {
+    id: 'legitimate_human',
+    label: 'Legitimate job — Human style (Illustrative)',
+    data: {
+      title: 'Operations Coordinator',
+      company: 'Acme Global Logistics',
+      location: 'Chicago, IL',
+      salary: '$65,000 - $80,000 per year',
+      employment_type: 'Full-time',
+      experience: '2+ years',
+      website: 'https://acmelogistics.example.com',
+      application_url: 'https://acmelogistics.example.com/careers/ops-101',
+      email: 'careers@acmelogistics.example.com',
+      description:
+        'We need someone organized to keep our small operations team on track. You will book meetings, follow up with suppliers, and tidy up our shared records. There is room to learn the business and take on more responsibility as our team grows.',
+      requirements:
+        '2+ years of administrative or office experience. Good communication skills and familiarity with spreadsheets.',
+      benefits:
+        'Health insurance, paid time off, and retirement match.',
+    },
+  },
+  {
+    id: 'legitimate_ai',
+    label: 'Legitimate job — AI style (Illustrative)',
+    data: {
+      title: 'Operations Coordinator',
+      company: 'Acme Global Logistics',
+      location: 'Chicago, IL',
+      salary: '$65,000 - $80,000 per year',
+      employment_type: 'Full-time',
+      experience: '2+ years',
+      website: 'https://acmelogistics.example.com',
+      application_url: 'https://acmelogistics.example.com/careers/ops-101',
+      email: 'careers@acmelogistics.example.com',
+      description:
+        'The team is seeking an operations coordinator to support scheduling, vendor communication, and process documentation. The successful candidate will collaborate with colleagues, maintain clear records, and improve routine workflows.',
+      requirements:
+        'Proven background in operations coordination. Demonstrated capability to streamline operational processes and optimize cross-departmental documentation.',
+      benefits:
+        'Comprehensive healthcare benefits package, dedicated professional development stipend, and 401(k) matching program.',
+    },
+  },
+];
+
 const percent = (value, digits = 1) =>
   value == null
     ? 'N/A'
@@ -316,6 +382,8 @@ function Analyzer({
   onClear,
   comparisonDraft,
   setComparisonDraft,
+  activePreset,
+  onLoadPreset,
 }) {
   const update = (event) => {
     setForm((current) => ({
@@ -350,6 +418,22 @@ function Analyzer({
             <i />
             USER-TRIGGERED
           </span>
+        </div>
+
+        <div className="preset-bar">
+          <span className="preset-bar-title">ILLUSTRATIVE PRESETS (CLICK TO POPULATE FORM)</span>
+          <div className="preset-buttons">
+            {DEMO_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`ghost-button preset-btn ${activePreset === preset.id ? 'active' : ''}`}
+                onClick={() => onLoadPreset(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <form onSubmit={onAnalyze}>
@@ -1125,6 +1209,7 @@ function App() {
   const [error, setError] = useState('');
   const [apiAvailable, setApiAvailable] = useState(false);
   const [comparisonDraft, setComparisonDraft] = useState({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
+  const [activePreset, setActivePreset] = useState(null);
 
   /*
    * ============================================================
@@ -1212,27 +1297,23 @@ function App() {
    * DEMO DATA
    * ============================================================
    */
-  const tryDemo = () => {
+  const loadPreset = (presetId) => {
+    const preset = DEMO_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+
     setForm({
       ...emptyForm,
-      title: 'Urgent Hiring Data Entry Clerk',
-      company: 'FastCashNow',
-      location: 'Remote',
-      salary: '$2000 - $5000 per day',
-      email: 'applyfastcashnow@gmail.com',
-      website: 'https://fastcashnow.xyz',
-      description:
-        'Urgent hiring now! Work from home and start today. Applicants must pay a registration fee and send bank details to begin onboarding.',
-      requirements:
-        'No experience required. Anyone can apply.',
-      benefits:
-        'Flexible working hours and immediate joining.',
+      ...preset.data,
     });
-
+    setActivePreset(presetId);
     setResult(null);
     setError('');
     setComparisonDraft({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
     setTab('analyzer');
+  };
+
+  const tryDemo = () => {
+    loadPreset('suspicious');
   };
 
   /*
@@ -1242,6 +1323,7 @@ function App() {
    */
   const clearForm = () => {
     setForm(emptyForm);
+    setActivePreset(null);
     setResult(null);
     setError('');
     setComparisonDraft({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
@@ -1377,6 +1459,8 @@ function App() {
             onClear={clearForm}
             comparisonDraft={comparisonDraft}
             setComparisonDraft={setComparisonDraft}
+            activePreset={activePreset}
+            onLoadPreset={loadPreset}
           />
         )}
 
