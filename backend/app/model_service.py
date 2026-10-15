@@ -1331,10 +1331,22 @@ class FraudAIAnalyzer:
                     differences.append({"field": label, "primary": str(payload.get(key)), "other": str(source.get(key))})
             comparisons.append({"platform": source.get("platform") or "Other source", "url": source.get("url") or None, "differences": differences, "status": "mismatch" if differences else "consistent" if any(source.get(key) and payload.get(key) for key in ("title", "company", "location", "salary")) else "insufficient_data", "method": "Supplied text is compared after case and whitespace normalization; salary units and currencies are not converted."})
 
+        active_fraud_indicators = [
+            signal for signal in fraud_indicators
+            if signal != "No strong fraud indicators were detected"
+        ]
+        active_ai_indicators = [
+            signal for signal in ai_indicators
+            if signal not in (
+                "No strong AI-style indicators were detected",
+                "Not available — AI-labeled dataset required.",
+            )
+        ]
+
         evidence_nodes = [{"kind": "posting", "label": str(payload.get("title") or "Job posting"), "detail": str(payload.get("company") or "Company not supplied")}]
-        for signal in fraud_indicators:
+        for signal in active_fraud_indicators:
             evidence_nodes.append({"kind": "fraud_signal", "label": signal, "detail": "Rule-based posting evidence", "severity": "high" if any(term in signal.casefold() for term in ("fee", "sensitive", "unrealistic salary")) else "review"})
-        for signal in ai_indicators:
+        for signal in active_ai_indicators:
             evidence_nodes.append({"kind": "writing_signal", "label": signal, "detail": "Writing-style signal; independent of fraud assessment"})
         if shap.get("available"):
             evidence_nodes.extend({"kind": "model_contribution", "label": str(item.get("feature", "Model feature")), "detail": f"SHAP contribution {item.get('value')}"} for item in shap.get("features", [])[:5])
@@ -1344,7 +1356,7 @@ class FraudAIAnalyzer:
         edges = [{"from": 0, "to": index} for index in range(1, final_node)]
         edges.extend({"from": index, "to": final_node} for index in range(1, final_node))
         edges.append({"from": 0, "to": final_node})
-        return {"salary": salary_report, "safety": safety, "missing_information": missing, "comparisons": comparisons, "evidence_graph": {"nodes": evidence_nodes, "edges": edges}, "summary": f"{risk_level} fraud risk from the existing model, with {len(fraud_indicators)} fraud indicator(s) and {len(missing)} missing information item(s)."}
+        return {"salary": salary_report, "safety": safety, "missing_information": missing, "comparisons": comparisons, "evidence_graph": {"nodes": evidence_nodes, "edges": edges}, "summary": f"{risk_level} fraud risk from the existing model, with {len(active_fraud_indicators)} fraud indicator(s) and {len(missing)} missing information item(s)."}
 
     # ------------------------------------------------------------------
     # SHAP

@@ -39,6 +39,7 @@ def test_analyze_returns_required_shape():
     assert {item["item"] for item in body["autopsy"]["safety"]} >= {
         "Company information", "Salary transparency", "Upfront fee request"
     }
+    assert "0 fraud indicator(s)" in body["autopsy"]["summary"]
     graph = body["autopsy"]["evidence_graph"]
     assert graph["nodes"][0]["kind"] == "posting"
     assert graph["nodes"][-1]["kind"] == "assessment"
