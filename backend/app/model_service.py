@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any
 
 import joblib
 import numpy as np
@@ -51,7 +52,7 @@ def _sanitize_path_value(val: Any) -> str:
     s = str(val or "")
     if not s:
         return ""
-    if s.startswith(("http://", "https://", "ftp://", "chrome-extension://")):
+    if s.startswith(("http://", "https://", "ftp://", "chrome-extension://")) or "://" in s:
         return s
     for prefix in ("data/raw", "data/ai_corpus", "data/demo", "backend/models", "results"):
         for variant in (prefix, prefix.replace("/", "\\")):
@@ -60,13 +61,22 @@ def _sanitize_path_value(val: Any) -> str:
                 return s[idx:].replace("\\", "/")
     try:
         p = Path(s)
-        try:
-            return p.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
-        except Exception:
-            if p.is_absolute() or ":" in s or "\\" in s:
-                return p.name
+        if p.is_absolute():
+            try:
+                return p.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
+            except Exception:
+                pass
     except Exception:
         pass
+
+    win = PureWindowsPath(s)
+    if win.is_absolute() or bool(win.drive) or bool(win.root) or (":" in s and "://" not in s):
+        return win.name or ""
+
+    posix = PurePosixPath(s)
+    if posix.is_absolute():
+        return posix.name or ""
+
     return s.replace("\\", "/")
 
 

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api import app
 from app.data_pipeline import extract_company_domain
-from app.model_service import _sanitize_public_payload, analyzer
+from app.model_service import _sanitize_path_value, _sanitize_public_payload, analyzer
 
 
 client = TestClient(app)
@@ -177,3 +177,18 @@ def test_api_paths_do_not_leak_local_user_directories():
     assert sanitized["nested"]["source_url"] == "http://localhost:8000/api/analyze"
     assert sanitized["dataset_path"] == "data/raw/fake_job_postings.csv"
     assert sanitized["nested"]["corpus_path"] == "data/ai_corpus/ai_labeled_corpus.csv"
+
+    # Regression check: Unfamiliar Windows absolute paths not matching repo folders are reduced to filename
+    unfamiliar_windows_path = "C:\\Users\\Person\\Desktop\\secret\\file.txt"
+    unfamiliar_payload = {
+        "dataset_path": unfamiliar_windows_path,
+        "nested": {
+            "corpus_path": "C:\\External\\CustomData\\unrecognized_corpus.csv",
+        },
+    }
+    sanitized_unfamiliar = _sanitize_public_payload(unfamiliar_payload)
+    assert sanitized_unfamiliar["dataset_path"] == "file.txt"
+    assert sanitized_unfamiliar["nested"]["corpus_path"] == "unrecognized_corpus.csv"
+    assert_no_local_paths(sanitized_unfamiliar)
+    assert _sanitize_path_value(unfamiliar_windows_path) == "file.txt"
+    assert _sanitize_path_value("C:/Users/Person/Desktop/secret/file.txt") == "file.txt"
