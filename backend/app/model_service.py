@@ -35,7 +35,54 @@ from .config import (
     EMSCAD_DATA_PATH,
     MODEL_DIR,
     RESULTS_DIR,
+    ROOT_DIR,
 )
+
+
+PATH_KEYS = {"dataset_path", "corpus_path", "background_path", "path"}
+
+
+def _is_path_key(key: str) -> bool:
+    low = key.lower()
+    return low in PATH_KEYS or low.endswith("_path") or low.endswith("_dir")
+
+
+def _sanitize_path_value(val: Any) -> str:
+    s = str(val or "")
+    if not s:
+        return ""
+    if s.startswith(("http://", "https://", "ftp://", "chrome-extension://")):
+        return s
+    for prefix in ("data/raw", "data/ai_corpus", "data/demo", "backend/models", "results"):
+        for variant in (prefix, prefix.replace("/", "\\")):
+            idx = s.lower().find(variant.lower())
+            if idx != -1:
+                return s[idx:].replace("\\", "/")
+    try:
+        p = Path(s)
+        try:
+            return p.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
+        except Exception:
+            if p.is_absolute() or ":" in s or "\\" in s:
+                return p.name
+    except Exception:
+        pass
+    return s.replace("\\", "/")
+
+
+def _sanitize_public_payload(obj: Any, key_name: str | None = None) -> Any:
+    if isinstance(obj, dict):
+        return {
+            k: _sanitize_public_payload(v, key_name=str(k))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_sanitize_public_payload(v, key_name=key_name) for v in obj]
+    if isinstance(obj, str):
+        if key_name and _is_path_key(key_name):
+            return _sanitize_path_value(obj)
+        return obj
+    return obj
 from .data_pipeline import (
     build_fraud_features,
     compute_stylometric_features,
@@ -731,7 +778,7 @@ class FraudAIAnalyzer:
         return model, {
             "available": True,
             "reason": None,
-            "corpus_path": str(AI_CORPUS_PATH),
+            "corpus_path": _sanitize_path_value(AI_CORPUS_PATH),
             "corpus_type": "Synthetic research corpus",
             "corpus_rows": int(len(raw_corpus)),
             "category_counts": {
@@ -1004,7 +1051,7 @@ class FraudAIAnalyzer:
                 else "DEMO MODE"
             ),
             "model_available": True,
-            "dataset_path": str(source),
+            "dataset_path": _sanitize_path_value(source),
             "dataset_rows": int(
                 len(raw_df)
             ),
@@ -1046,7 +1093,7 @@ class FraudAIAnalyzer:
                 ai_aware_metadata
             ),
             "shap": {
-                "background_path": str(
+                "background_path": _sanitize_path_value(
                     self.shap_background_path
                 ),
                 "feature_count": len(
@@ -1411,7 +1458,11 @@ class FraudAIAnalyzer:
     # ------------------------------------------------------------------
 
     def get_model_info(self):
-        return {
+        dataset_path_val = self.model_summary.get(
+            "dataset_path",
+            str(self.dataset_path),
+        )
+        return _sanitize_public_payload({
             "mode": self.model_summary.get(
                 "mode_label",
                 "MODEL NOT LOADED",
@@ -1419,10 +1470,7 @@ class FraudAIAnalyzer:
             "model_available": bool(
                 self.fraud_model is not None
             ),
-            "dataset_path": self.model_summary.get(
-                "dataset_path",
-                str(self.dataset_path),
-            ),
+            "dataset_path": _sanitize_path_value(dataset_path_val),
             "dataset_rows": self.model_summary.get(
                 "dataset_rows"
             ),
@@ -1473,7 +1521,7 @@ class FraudAIAnalyzer:
                     "ai_aware_experiments"
                 )
             ),
-        }
+        })
 
     def get_research_results(self):
         if (
@@ -1499,10 +1547,10 @@ class FraudAIAnalyzer:
 
         payload.pop("shap", None)
 
-        return {
+        return _sanitize_public_payload({
             "available": True,
             **payload,
-        }
+        })
 
     # ------------------------------------------------------------------
     # PREDICTION

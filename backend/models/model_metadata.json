@@ -1,7 +1,7 @@
 {
   "mode": "research",
   "mode_label": "RESEARCH MODE",
-  "dataset_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\data\\raw\\fake_job_postings.csv",
+  "dataset_path": "data/raw/fake_job_postings.csv",
   "dataset_rows": 17880,
   "dataset_columns": [
     "job_id",
@@ -57,7 +57,7 @@
   "ai_model": {
     "available": true,
     "reason": null,
-    "corpus_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\data\\ai_corpus\\ai_labeled_corpus.csv",
+    "corpus_path": "data/ai_corpus/ai_labeled_corpus.csv",
     "corpus_type": "Synthetic research corpus",
     "corpus_rows": 40,
     "category_counts": {
@@ -120,7 +120,7 @@
     }
   },
   "shap": {
-    "background_path": "C:\\Users\\Chanakya Karra\\Downloads\\MINPROJ\\backend\\models\\fraud_shap_background.joblib",
+    "background_path": "backend/models/fraud_shap_background.joblib",
     "feature_count": 8662
   },
   "timestamp_utc": "2026-10-01T06:28:18.276138+00:00"
