@@ -163,6 +163,18 @@ def compute_stylometric_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def extract_company_domain(website: str) -> str:
+    if not website:
+        return ""
+    host = str(website).strip().split("//")[-1].split("/")[0].split(":")[0]
+    if not host:
+        return ""
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return parts[-2]
+    return parts[0]
+
+
 def build_fraud_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     title_series = series_or_empty(out, "title")
@@ -191,7 +203,7 @@ def build_fraud_features(df: pd.DataFrame) -> pd.DataFrame:
     out["salary_pattern_suspicious"] = out["salary"].fillna("").astype(str).map(lambda x: 1 if re.search(r"\$\s*\d{3,}\s*[-–]\s*\$\s*\d{4,}", x) or re.search(r"\$\s*\d{4,}\s*per\s*day", x.lower()) else 0)
     out["employment_type"] = out.get("employment_type", pd.Series([""] * len(out))).fillna("").astype(str)
     out["location"] = out.get("location", pd.Series([""] * len(out))).fillna("").astype(str)
-    out["company_domain"] = out.get("website", pd.Series([""] * len(out))).fillna("").astype(str).map(lambda x: x.split("//")[-1].split("/")[0].split(".")[-2] if x else "")
+    out["company_domain"] = out.get("website", pd.Series([""] * len(out))).fillna("").astype(str).map(extract_company_domain)
     return out
 
 

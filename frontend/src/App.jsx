@@ -9,12 +9,20 @@ import './autopsy-interactions.css';
  * API CONFIGURATION
  * ============================================================
  *
- * VITE_API_URL can be supplied by the deployment environment.
- * If it is not supplied, the deployed Render API is used.
+ * In local Vite development (import.meta.env.DEV), default to ''
+ * so all /api requests are routed to the local backend through
+ * the Vite development server proxy (vite.config.js -> http://localhost:8000).
+ *
+ * If VITE_API_URL is explicitly set (in .env or deployment env), that is used.
+ * In production builds (import.meta.env.PROD), if VITE_API_URL is not set,
+ * it falls back to the deployed Render API.
  */
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  'https://ai-aware-recruitment-fraud-detection-api.onrender.com';
+  import.meta.env.VITE_API_URL !== undefined
+    ? import.meta.env.VITE_API_URL
+    : import.meta.env.DEV
+      ? ''
+      : 'https://ai-aware-recruitment-fraud-detection-api.onrender.com';
 
 const emptyForm = {
   title: '',
@@ -1252,7 +1260,7 @@ function App() {
     setResult(null);
 
     try {
-      if (!API_BASE_URL) {
+      if (API_BASE_URL === undefined || API_BASE_URL === null) {
         throw new Error('Backend API URL is not configured.');
       }
 
@@ -1322,7 +1330,7 @@ function App() {
         setApiAvailable(false);
 
         setError(
-          `Cannot connect to backend. API: ${API_BASE_URL}`
+          `Cannot connect to backend. API: ${API_BASE_URL || 'local proxy (/api)'}`
         );
       } else {
         setError(
