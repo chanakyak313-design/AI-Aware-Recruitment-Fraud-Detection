@@ -24,9 +24,324 @@
 .ghost-button:focus-visible,
 .preset-btn:focus-visible,
 .print-report-btn:focus-visible,
-.evidence-text-content:focus-visible {
+.evidence-text-content:focus-visible,
+.mode-toggle-btn:focus-visible,
+.batch-inspect-btn:focus-visible,
+.batch-dropzone:focus-visible,
+.batch-export-btn:focus-visible {
   outline: 2px solid #7186ff !important;
   outline-offset: 2px !important;
+}
+
+/* Analyzer Mode Toggle */
+.analyzer-mode-bar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 24px;
+}
+.mode-toggle-group {
+  display: inline-flex;
+  padding: 3px;
+  background: #0d1420;
+  border: 1px solid #1c2738;
+  border-radius: 8px;
+  gap: 4px;
+}
+.mode-toggle-btn {
+  padding: 8px 16px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8c9bb3;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+.mode-toggle-btn:hover {
+  color: #e2e8f0;
+  background: #141e2e;
+}
+.mode-toggle-btn.active {
+  color: #ffffff;
+  background: #202b42;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Batch Card & Privacy Note */
+.batch-card {
+  padding: 28px;
+  border-radius: 11px;
+}
+.batch-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 16px;
+  margin: 18px 0 22px;
+  border-left: 3px solid #5878ff;
+  background: #101827;
+  border-radius: 0 8px 8px 0;
+  color: #a5b4fc;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.batch-privacy-note strong {
+  color: #c7d2fe;
+}
+
+/* Batch Dropzone */
+.batch-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  border: 2px dashed #24334a;
+  border-radius: 9px;
+  background: #090e16;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.batch-dropzone:hover {
+  border-color: #5c72b8;
+  background: #0d1420;
+}
+.batch-dropzone input[type="file"] {
+  display: none;
+}
+.batch-dropzone-icon {
+  font-size: 1.8rem;
+  color: #7186ff;
+  margin-bottom: 8px;
+}
+.batch-dropzone h4 {
+  font-size: 0.88rem;
+  margin: 0 0 6px;
+  color: #e2e8f0;
+}
+.batch-dropzone p {
+  color: #718096;
+  font-size: 0.68rem;
+  max-width: 440px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* File Selected Banner */
+.batch-file-info {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #1f2b3e;
+  border-radius: 8px;
+  background: #0b111a;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.batch-file-details strong {
+  display: block;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+}
+.batch-file-details small {
+  display: block;
+  color: #718096;
+  font-size: 0.65rem;
+  margin-top: 4px;
+}
+.batch-mapped-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.batch-mapped-tag {
+  padding: 2px 7px;
+  background: #141e30;
+  border: 1px solid #23334d;
+  color: #93c5fd;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-family: 'DM Mono', monospace;
+}
+.batch-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Batch Progress Bar */
+.batch-progress-box {
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid #1e2c40;
+  border-radius: 8px;
+  background: #0d1522;
+}
+.batch-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 0.72rem;
+}
+.batch-progress-bar {
+  height: 6px;
+  background: #1a2538;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.batch-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5878ff, #7e67e9);
+  transition: width 0.25s ease;
+}
+
+/* Batch Summary Stats */
+.batch-summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 22px 0 16px;
+}
+.batch-stat-badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: #101724;
+  border: 1px solid #1e2c40;
+  color: #94a3b8;
+}
+.batch-stat-badge b {
+  color: #e2e8f0;
+  margin-left: 4px;
+}
+
+/* Table Container & Table */
+.batch-table-container {
+  overflow-x: auto;
+  border: 1px solid #1a2536;
+  border-radius: 8px;
+  margin: 16px 0;
+  background: #090e16;
+}
+.batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  text-align: left;
+}
+.batch-table th {
+  padding: 11px 12px;
+  background: #0d1420;
+  color: #718096;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #1a2536;
+  white-space: nowrap;
+}
+.batch-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #131c2a;
+  color: #cbd5e1;
+  vertical-align: middle;
+}
+.batch-table tr:hover {
+  background: #0e1624;
+}
+.batch-risk-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.05em;
+}
+.batch-risk-pill.high {
+  color: #ef8796;
+  background: #341a22;
+  border: 1px solid #5a2632;
+}
+.batch-risk-pill.medium {
+  color: #f2c66e;
+  background: #312615;
+  border: 1px solid #544120;
+}
+.batch-risk-pill.low {
+  color: #6de0ad;
+  background: #142a20;
+  border: 1px solid #204d37;
+}
+.batch-risk-pill.failed {
+  color: #ff8e9c;
+  background: #2b161c;
+  border: 1px solid #481f28;
+}
+.batch-table-indicators {
+  max-width: 280px;
+  white-space: normal;
+  line-height: 1.4;
+  color: #94a3b8;
+  font-size: 0.65rem;
+}
+.batch-inspect-btn {
+  padding: 5px 10px;
+  font-size: 0.64rem;
+  min-height: auto;
+}
+.batch-export-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #192535;
+}
+.batch-disclaimer-box {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: #0c121c;
+  border: 1px solid #1b2636;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  color: #718096;
+  line-height: 1.6;
+}
+.batch-disclaimer-box strong {
+  color: #94a3b8;
+}
+
+@media(max-width:800px) {
+  .mode-toggle-btn {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .batch-inspect-btn {
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+  .batch-file-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .batch-file-actions {
+    width: 100%;
+  }
+  .batch-file-actions .primary-button,
+  .batch-file-actions .ghost-button {
+    flex: 1;
+  }
 }
 
 @media print {
