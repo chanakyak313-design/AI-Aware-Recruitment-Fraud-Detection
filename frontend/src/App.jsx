@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import './styles.css';
 import './autopsy.css';
 import './autopsy-interactions.css';
@@ -1038,6 +1038,8 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
             source: 'batch',
             payload: { ...payload },
             result: body,
+            review_status: 'Not reviewed',
+            review_note: '',
           });
         }
       } catch (err) {
@@ -1099,7 +1101,7 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
       <div className="batch-privacy-note" role="note">
         <Icon>ℹ</Icon>
         <div>
-          <strong>Privacy notice:</strong> The CSV is read in your browser and is not stored by the app. Each job posting is sent to the configured analysis server, as it is for individual analysis. Job details and results may be kept temporarily in this tab’s history, can be cleared with Clear History, and are removed when the tab closes.
+          <strong>Privacy notice:</strong> The CSV is read in your browser and is not stored by the app. Job details are sent to the configured analysis server for screening; review notes and statuses are stored only in this tab’s session history, cleared when history is cleared or the tab closes.
         </div>
       </div>
 
@@ -1394,8 +1396,10 @@ function findCrossPostingMatches(selectedJobs) {
   return matches;
 }
 
-function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
+function RecentHistory({ history, onInspect, onClearHistory, storageError, onUpdateReview }) {
   const [selectedIds, setSelectedIds] = useState([]);
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [reviewDraft, setReviewDraft] = useState({ status: 'Not reviewed', note: '' });
 
   const selectedJobs = useMemo(
     () => (history || []).filter((item) => selectedIds.includes(item.id)),
@@ -1425,7 +1429,31 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
 
   const handleClearAllHistory = () => {
     setSelectedIds([]);
+    setEditingReviewId(null);
     onClearHistory();
+  };
+
+  const handleToggleEditReview = (id) => {
+    if (editingReviewId === id) {
+      setEditingReviewId(null);
+    } else {
+      const item = (history || []).find((h) => h.id === id);
+      setReviewDraft({
+        status: item?.review_status || 'Not reviewed',
+        note: item?.review_note || '',
+      });
+      setEditingReviewId(id);
+    }
+  };
+
+  const handleSaveReview = (id) => {
+    if (onUpdateReview) {
+      onUpdateReview(id, {
+        status: reviewDraft.status || 'Not reviewed',
+        note: (reviewDraft.note || '').slice(0, 300),
+      });
+    }
+    setEditingReviewId(null);
   };
 
   return (
@@ -1453,7 +1481,7 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
       <div className="batch-privacy-note history-privacy-note" role="note">
         <Icon>ℹ</Icon>
         <div>
-          <strong>Privacy notice:</strong> Job details and results may be kept temporarily in this tab’s history, can be cleared with Clear History, and are removed when the tab closes. Each posting is sent to the configured analysis server, as it is for individual analysis.
+          <strong>Privacy notice:</strong> Job details are sent to the configured analysis server for screening; review notes and statuses are stored only in this tab’s session history, cleared when history is cleared or the tab closes.
         </div>
       </div>
 
@@ -1618,6 +1646,23 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
                         </p>
                       </div>
 
+                      <div className="compare-review-section">
+                        <span className="compare-section-label">HUMAN REVIEW LOG</span>
+                        <div className="compare-review-status-box">
+                          <span className={`review-pill ${(job.review_status || 'Not reviewed').toLowerCase().replace(/\s+/g, '-')}`}>
+                            {job.review_status || 'Not reviewed'}
+                          </span>
+                        </div>
+                        {job.review_note ? (
+                          <p className="compare-review-note">“{job.review_note}”</p>
+                        ) : (
+                          <p className="compare-review-empty">No review note added</p>
+                        )}
+                        <p className="compare-review-disclaimer">
+                          Workflow annotation · Not ground truth · Not sent to analysis server
+                        </p>
+                      </div>
+
                       <div className="compare-card-actions">
                         <button
                           type="button"
@@ -1645,56 +1690,180 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
                   <th>Company</th>
                   <th>Date / Time</th>
                   <th>Risk Level</th>
+                  <th>Review Status</th>
                   <th>Type</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((item, idx) => (
-                  <tr key={item.id || idx}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        className="history-checkbox"
-                        checked={selectedIds.includes(item.id)}
-                        disabled={!selectedIds.includes(item.id) && selectedIds.length >= 3}
-                        onChange={() => handleToggleSelect(item.id)}
-                        aria-label={`Select ${item.title || 'posting'} for comparison`}
-                        title={
-                          !selectedIds.includes(item.id) && selectedIds.length >= 3
-                            ? 'Maximum 3 postings can be selected for comparison'
-                            : 'Select to compare'
-                        }
-                      />
-                    </td>
-                    <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{item.title}</td>
-                    <td>{item.company}</td>
-                    <td style={{ fontFamily: 'DM Mono', fontSize: '0.68rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                      {item.dateTime}
-                    </td>
-                    <td>
-                      <span className={`batch-risk-pill ${(item.risk_level || 'unknown').toLowerCase()}`}>
-                        {item.risk_level || 'UNKNOWN'} RISK
-                      </span>
-                    </td>
-                    <td>
-                      <span className="history-source-badge">
-                        {item.source === 'batch' ? 'Batch' : 'Single'}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="ghost-button history-inspect-btn"
-                        title="Inspect this posting in the single-job analysis view with full autopsy and print report"
-                        onClick={() => onInspect(item)}
-                      >
-                        Inspect <span>→</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {history.map((item, idx) => {
+                  const reviewStatus = item.review_status || 'Not reviewed';
+                  const reviewNote = item.review_note || '';
+                  const isEditing = editingReviewId === item.id;
+
+                  return (
+                    <Fragment key={item.id || idx}>
+                      <tr>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            className="history-checkbox"
+                            checked={selectedIds.includes(item.id)}
+                            disabled={!selectedIds.includes(item.id) && selectedIds.length >= 3}
+                            onChange={() => handleToggleSelect(item.id)}
+                            aria-label={`Select ${item.title || 'posting'} for comparison`}
+                            title={
+                              !selectedIds.includes(item.id) && selectedIds.length >= 3
+                                ? 'Maximum 3 postings can be selected for comparison'
+                                : 'Select to compare'
+                            }
+                          />
+                        </td>
+                        <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{idx + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{item.title}</td>
+                        <td>{item.company}</td>
+                        <td style={{ fontFamily: 'DM Mono', fontSize: '0.68rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          {item.dateTime}
+                        </td>
+                        <td>
+                          <span className={`batch-risk-pill ${(item.risk_level || 'unknown').toLowerCase()}`}>
+                            {item.risk_level || 'UNKNOWN'} RISK
+                          </span>
+                        </td>
+                        <td>
+                          <div className="history-review-cell">
+                            <span className={`review-pill ${reviewStatus.toLowerCase().replace(/\s+/g, '-')}`}>
+                              {reviewStatus}
+                            </span>
+                            {reviewNote && (
+                              <span className="history-note-preview" title={reviewNote}>
+                                “{reviewNote}”
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="history-review-edit-btn"
+                              onClick={() => handleToggleEditReview(item.id)}
+                              aria-expanded={isEditing}
+                              aria-label={`Edit review for ${item.title || 'posting'}`}
+                              title="Edit human review status and note"
+                            >
+                              {isEditing ? 'Close' : reviewStatus !== 'Not reviewed' || reviewNote ? 'Edit' : '+ Review'}
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="history-source-badge">
+                            {item.source === 'batch' ? 'Batch' : 'Single'}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="ghost-button history-inspect-btn"
+                            title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                            onClick={() => onInspect(item)}
+                          >
+                            Inspect <span>→</span>
+                          </button>
+                        </td>
+                      </tr>
+
+                      {isEditing && (
+                        <tr className="history-inline-editor-row" key={`${item.id}-editor`}>
+                          <td colSpan="9">
+                            <div
+                              className="history-inline-editor"
+                              role="region"
+                              aria-label={`Review log editor for ${item.title || 'posting'}`}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') setEditingReviewId(null);
+                              }}
+                            >
+                              <div className="history-editor-header">
+                                <div>
+                                  <span className="history-editor-title">Human Review Log</span>
+                                  <span className="history-editor-subtitle">
+                                    Temporary workflow annotation · Stored only in this tab · Not model ground truth · Not sent to analysis server
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="history-editor-close-btn"
+                                  onClick={() => setEditingReviewId(null)}
+                                  aria-label="Close review editor"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="history-editor-body">
+                                <div className="history-editor-field">
+                                  <label htmlFor={`review-status-${item.id}`}>Review Status:</label>
+                                  <select
+                                    id={`review-status-${item.id}`}
+                                    className="history-status-select"
+                                    value={reviewDraft.status}
+                                    onChange={(e) =>
+                                      setReviewDraft((prev) => ({ ...prev, status: e.target.value }))
+                                    }
+                                  >
+                                    <option value="Not reviewed">Not reviewed</option>
+                                    <option value="Reviewed">Reviewed</option>
+                                    <option value="Needs follow-up">Needs follow-up</option>
+                                  </select>
+                                </div>
+
+                                <div className="history-editor-field note-field">
+                                  <div className="history-note-header">
+                                    <label htmlFor={`review-note-${item.id}`}>Optional Review Note:</label>
+                                    <span className={`char-count ${reviewDraft.note.length >= 280 ? 'warn' : ''}`}>
+                                      {reviewDraft.note.length}/300
+                                    </span>
+                                  </div>
+                                  <textarea
+                                    id={`review-note-${item.id}`}
+                                    className="history-note-input"
+                                    rows="2"
+                                    maxLength={300}
+                                    placeholder="Add optional review notes (e.g., confirmed legitimacy with company, awaiting callback)..."
+                                    value={reviewDraft.note}
+                                    onChange={(e) =>
+                                      setReviewDraft((prev) => ({
+                                        ...prev,
+                                        note: e.target.value.slice(0, 300),
+                                      }))
+                                    }
+                                  />
+                                  <p className="history-note-pii-warning">
+                                    ⚠ Do not enter personal or confidential information (e.g., candidate names, credentials, or private contact details).
+                                  </p>
+                                </div>
+
+                                <div className="history-editor-actions">
+                                  <button
+                                    type="button"
+                                    className="ghost-button"
+                                    onClick={() => setEditingReviewId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="primary-button history-save-review-btn"
+                                    onClick={() => handleSaveReview(item.id)}
+                                  >
+                                    Save review
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1725,6 +1894,7 @@ function Analyzer({
   onClearHistory,
   storageError,
   onPrintBatch,
+  onUpdateReview,
 }) {
   const [analyzerMode, setAnalyzerMode] = useState('single');
 
@@ -2022,6 +2192,7 @@ function Analyzer({
           }}
           onClearHistory={onClearHistory}
           storageError={storageError}
+          onUpdateReview={onUpdateReview}
         />
       )}
     </div>
@@ -3017,6 +3188,29 @@ function App() {
     setStorageError(null);
   };
 
+  const handleUpdateReview = (id, { status, note }) => {
+    setHistory((prevHistory) => {
+      const updated = prevHistory.map((item) => {
+        if (item.id === id) {
+          return {
+            ...item,
+            review_status: status || 'Not reviewed',
+            review_note: (note || '').slice(0, 300),
+            review_updated_at: new Date().toISOString(),
+          };
+        }
+        return item;
+      });
+      const saveRes = saveSessionHistory(updated);
+      if (!saveRes.success) {
+        setStorageError(saveRes.error);
+      } else {
+        setStorageError(null);
+      }
+      return updated;
+    });
+  };
+
   /*
    * ============================================================
    * BACKEND HEALTH / INITIAL DATA
@@ -3217,6 +3411,8 @@ function App() {
         source: 'single',
         payload: { ...form },
         result: body,
+        review_status: 'Not reviewed',
+        review_note: '',
       });
     } catch (requestError) {
       console.error('Analysis error:', requestError);
@@ -3304,6 +3500,7 @@ function App() {
               onClearHistory={handleClearHistory}
               storageError={storageError}
               onPrintBatch={printBatch}
+              onUpdateReview={handleUpdateReview}
             />
           )}
 
