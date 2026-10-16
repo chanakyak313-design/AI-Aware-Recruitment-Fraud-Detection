@@ -29,6 +29,7 @@
 .batch-inspect-btn:focus-visible,
 .batch-dropzone:focus-visible,
 .batch-export-btn:focus-visible,
+.batch-print-btn:focus-visible,
 .history-inspect-btn:focus-visible,
 .history-clear-btn:focus-visible,
 .history-table-container:focus-visible,
@@ -311,6 +312,16 @@
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid #192535;
+}
+.batch-export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.batch-print-btn {
+  padding: 8px 14px;
+  font-size: 0.72rem;
 }
 .batch-disclaimer-box {
   margin-top: 18px;
@@ -731,6 +742,7 @@
     justify-content: center;
   }
   .batch-inspect-btn,
+  .batch-print-btn,
   .history-inspect-btn,
   .history-clear-btn,
   .compare-inspect-btn,
@@ -1006,6 +1018,121 @@
     font-weight: 700;
     color: #1e40af !important;
     font-family: monospace;
+  }
+  /* Batch Summary Print Styles */
+  .print-batch-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6pt;
+    margin-bottom: 6pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-batch-stat-card {
+    border: 1pt solid #d1d5db;
+    border-radius: 3pt;
+    padding: 4pt 6pt;
+    background: #fafafa !important;
+    text-align: center;
+  }
+  .print-batch-stat-label {
+    display: block;
+    font-size: 6pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #4b5563;
+    margin-bottom: 2pt;
+  }
+  .print-batch-stat-val {
+    font-size: 13pt;
+    font-weight: 800;
+    color: #111827;
+    font-family: monospace;
+  }
+  .print-stat-high .print-batch-stat-val {
+    color: #991b1b !important;
+  }
+  .print-stat-med .print-batch-stat-val {
+    color: #b45309 !important;
+  }
+  .print-stat-low .print-batch-stat-val {
+    color: #047857 !important;
+  }
+  .print-stat-failed .print-batch-stat-val {
+    color: #b91c1c !important;
+  }
+  .print-batch-models-note {
+    font-size: 7pt;
+    color: #4b5563;
+    line-height: 1.35;
+    margin: 4pt 0 0;
+  }
+  .print-batch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7.5pt;
+    margin-bottom: 4pt;
+  }
+  .print-batch-table th,
+  .print-batch-table td {
+    padding: 3.5pt 5pt;
+    border: 0.5pt solid #d1d5db;
+    text-align: left;
+    vertical-align: top;
+  }
+  .print-batch-table th {
+    background: #f3f4f6 !important;
+    font-size: 7pt;
+    font-weight: 700;
+    color: #374151;
+  }
+  .print-ai-header {
+    background: #eff6ff !important;
+    border-left: 1pt solid #bfdbfe !important;
+    border-right: 1pt solid #bfdbfe !important;
+  }
+  .print-ai-cell {
+    background: #f8faff !important;
+    border-left: 1pt solid #dbeafe !important;
+    border-right: 1pt solid #dbeafe !important;
+    color: #1e40af !important;
+  }
+  .print-batch-indicators-cell {
+    font-size: 7pt;
+    color: #4b5563;
+    line-height: 1.25;
+  }
+  .print-batch-table .batch-risk-pill {
+    padding: 1pt 4pt;
+    font-size: 6.5pt;
+    border-radius: 3pt;
+  }
+  .print-batch-table .batch-risk-pill.high {
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    border: 0.5pt solid #fecaca !important;
+  }
+  .print-batch-table .batch-risk-pill.medium {
+    background: #fffbeb !important;
+    color: #b45309 !important;
+    border: 0.5pt solid #fde68a !important;
+  }
+  .print-batch-table .batch-risk-pill.low {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border: 0.5pt solid #a7f3d0 !important;
+  }
+  .print-batch-table .batch-risk-pill.failed {
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    border: 0.5pt solid #fca5a5 !important;
+  }
+  .print-batch-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-batch-table thead {
+    display: table-header-group;
   }
   .print-footer {
     border-top: 1pt solid #9ca3af;

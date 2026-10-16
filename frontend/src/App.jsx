@@ -885,7 +885,7 @@ function clearSessionHistory() {
   }
 }
 
-function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvailable }) {
+function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvailable, onPrintBatch }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [parsedJobs, setParsedJobs] = useState([]);
@@ -1272,9 +1272,18 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
                 <button type="button" className="ghost-button" onClick={resetState}>
                   Screen another file
                 </button>
-                <button type="button" className="primary-button batch-export-btn" onClick={handleExport}>
-                  Export Results CSV <span>↓</span>
-                </button>
+                <div className="batch-export-actions">
+                  <button
+                    type="button"
+                    className="ghost-button batch-print-btn"
+                    onClick={() => onPrintBatch && onPrintBatch(results)}
+                  >
+                    Print / Save PDF <span>⎙</span>
+                  </button>
+                  <button type="button" className="primary-button batch-export-btn" onClick={handleExport}>
+                    Export Results CSV <span>↓</span>
+                  </button>
+                </div>
               </div>
 
               <div className="batch-disclaimer-box">
@@ -1715,6 +1724,7 @@ function Analyzer({
   onSaveHistoryItem,
   onClearHistory,
   storageError,
+  onPrintBatch,
 }) {
   const [analyzerMode, setAnalyzerMode] = useState('single');
 
@@ -1998,6 +2008,7 @@ function Analyzer({
           onSaveHistoryItem={onSaveHistoryItem}
           API_BASE_URL={API_BASE_URL}
           setApiAvailable={setApiAvailable}
+          onPrintBatch={onPrintBatch}
         />
       )}
 
@@ -2618,6 +2629,133 @@ function Methodology({ setTab }) {
   );
 }
 
+function BatchPrintReport({ results = [] }) {
+  const generatedAt = useMemo(() => new Date().toLocaleString(), []);
+
+  const totalCount = results.length;
+  const highCount = results.filter((r) => r.status === 'success' && r.risk_level === 'HIGH').length;
+  const medCount = results.filter((r) => r.status === 'success' && r.risk_level === 'MEDIUM').length;
+  const lowCount = results.filter((r) => r.status === 'success' && r.risk_level === 'LOW').length;
+  const failedCount = results.filter((r) => r.status === 'failed').length;
+
+  return (
+    <div className="print-report-container" aria-hidden="true">
+      <header className="print-header">
+        <div className="print-brand">
+          <h1>JobShield AI</h1>
+          <span className="print-subtitle">Batch Screening Summary Report</span>
+        </div>
+        <div className="print-meta">
+          <div><strong>Generated:</strong> {generatedAt}</div>
+          <div><strong>Total Screened:</strong> {totalCount}</div>
+        </div>
+      </header>
+
+      <section className="print-section">
+        <h2 className="print-section-title">01 / Screening Summary Overview</h2>
+        <div className="print-batch-stats-grid">
+          <div className="print-batch-stat-card">
+            <span className="print-batch-stat-label">TOTAL ROWS</span>
+            <span className="print-batch-stat-val">{totalCount}</span>
+          </div>
+          <div className="print-batch-stat-card print-stat-high">
+            <span className="print-batch-stat-label">HIGH RISK</span>
+            <span className="print-batch-stat-val">{highCount}</span>
+          </div>
+          <div className="print-batch-stat-card print-stat-med">
+            <span className="print-batch-stat-label">MEDIUM RISK</span>
+            <span className="print-batch-stat-val">{medCount}</span>
+          </div>
+          <div className="print-batch-stat-card print-stat-low">
+            <span className="print-batch-stat-label">LOW RISK</span>
+            <span className="print-batch-stat-val">{lowCount}</span>
+          </div>
+          <div className="print-batch-stat-card print-stat-failed">
+            <span className="print-batch-stat-label">FAILED ROWS</span>
+            <span className="print-batch-stat-val">{failedCount}</span>
+          </div>
+        </div>
+        <p className="print-batch-models-note">
+          Fraud risk evaluation is conducted by classification models and heuristic indicators. Writing style is analyzed independently from fraud risk. An AI-text estimate reflects stylometric writing patterns and does not prove AI authorship or fraudulent intent.
+        </p>
+      </section>
+
+      <section className="print-section">
+        <h2 className="print-section-title">02 / Screening Results Table</h2>
+        <table className="print-batch-table">
+          <thead>
+            <tr>
+              <th style={{ width: '4%' }}>#</th>
+              <th style={{ width: '22%' }}>Job Title</th>
+              <th style={{ width: '18%' }}>Company</th>
+              <th style={{ width: '12%' }}>Fraud Risk</th>
+              <th style={{ width: '10%' }}>Fraud Prob.</th>
+              <th className="print-ai-header" style={{ width: '12%' }}>AI-Text Estimate</th>
+              <th style={{ width: '22%' }}>Key Fraud Indicators</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((row, idx) => {
+              const rowNum = row.id ?? idx + 1;
+              const title = row.payload?.title?.trim() || 'Untitled posting';
+              const company = row.payload?.company?.trim() || '—';
+
+              const isSuccess = row.status === 'success';
+              const isFailed = row.status === 'failed';
+
+              const riskLevel = isSuccess ? row.risk_level || 'UNKNOWN' : isFailed ? 'FAILED' : row.status?.toUpperCase() || '—';
+              const fraudProb = isSuccess && row.fraud_probability != null ? percent(row.fraud_probability, 1) : 'Not available';
+              const aiEstimate = isSuccess && row.ai_generation_probability != null ? percent(row.ai_generation_probability, 1) : 'Not available';
+
+              let indicatorsText = '—';
+              if (isSuccess) {
+                indicatorsText = row.fraud_indicators && row.fraud_indicators.length > 0
+                  ? row.fraud_indicators.join(', ')
+                  : 'None detected';
+              } else if (isFailed) {
+                indicatorsText = row.error || 'Screening failed';
+              }
+
+              return (
+                <tr key={row.id ?? idx}>
+                  <td style={{ fontFamily: 'monospace' }}>{rowNum}</td>
+                  <td style={{ fontWeight: 600 }}>{title}</td>
+                  <td>{company}</td>
+                  <td>
+                    {isSuccess ? (
+                      <span className={`batch-risk-pill ${(row.risk_level || '').toLowerCase()}`}>
+                        {riskLevel} RISK
+                      </span>
+                    ) : isFailed ? (
+                      <span className="batch-risk-pill failed">FAILED</span>
+                    ) : (
+                      <span>{riskLevel}</span>
+                    )}
+                  </td>
+                  <td style={{ fontFamily: 'monospace' }}>{fraudProb}</td>
+                  <td className="print-ai-cell" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                    {aiEstimate}
+                  </td>
+                  <td className="print-batch-indicators-cell">{indicatorsText}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      <footer className="print-footer">
+        <p className="print-disclaimer">
+          <strong>Disclaimer:</strong> Model outputs are decision-support signals and not definitive proof of fraud. The AI-text estimate is about writing style (such as vocabulary diversity and repetition) and does not prove AI authorship or fraud.
+        </p>
+        <p className="print-footer-sub">
+          JobShield AI · Decision support only. AI-generated text does not inherently indicate fraudulent intent.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
 function PrintReport({ form, result }) {
   const generatedAt = useMemo(() => new Date().toLocaleString(), [result]);
   const aiValue = result.ai_generation_probability;
@@ -2843,6 +2981,8 @@ function App() {
   const [apiAvailable, setApiAvailable] = useState(false);
   const [comparisonDraft, setComparisonDraft] = useState({ platform: '', title: '', company: '', location: '', salary: '', url: '' });
   const [activePreset, setActivePreset] = useState(null);
+  const [activePrintType, setActivePrintType] = useState('single');
+  const [batchPrintData, setBatchPrintData] = useState(null);
 
   /*
    * ============================================================
@@ -3103,6 +3243,21 @@ function App() {
     }
   };
 
+  const printBatch = (resultsToPrint) => {
+    if (!resultsToPrint || resultsToPrint.length === 0) return;
+    setBatchPrintData(resultsToPrint);
+    setActivePrintType('batch');
+    setTimeout(() => {
+      const handleAfter = () => {
+        window.removeEventListener('afterprint', handleAfter);
+        setActivePrintType('single');
+        setBatchPrintData(null);
+      };
+      window.addEventListener('afterprint', handleAfter);
+      window.print();
+    }, 60);
+  };
+
   return (
     <>
       <div className="app-frame">
@@ -3148,6 +3303,7 @@ function App() {
               onSaveHistoryItem={addHistoryItem}
               onClearHistory={handleClearHistory}
               storageError={storageError}
+              onPrintBatch={printBatch}
             />
           )}
 
@@ -3193,7 +3349,11 @@ function App() {
         </main>
       </div>
 
-      {result && <PrintReport form={form} result={result} />}
+      {activePrintType === 'batch' && batchPrintData && batchPrintData.length > 0 ? (
+        <BatchPrintReport results={batchPrintData} />
+      ) : result ? (
+        <PrintReport form={form} result={result} />
+      ) : null}
     </>
   );
 }
