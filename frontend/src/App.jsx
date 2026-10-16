@@ -1725,6 +1725,90 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError, onUpd
                         </div>
                       </div>
 
+                      <div className="compare-shap-section" aria-label="Model explainability SHAP contributions">
+                        <span className="compare-section-label">MODEL EXPLAINABILITY (SHAP)</span>
+                        {(() => {
+                          const shapData = job.result?.shap || job.shap;
+                          const allShapFeatures = Array.isArray(shapData?.features) ? shapData.features : [];
+                          const isShapAvailable = Boolean(shapData?.available && allShapFeatures.length > 0);
+                          const positiveFeatures = allShapFeatures
+                            .filter((item) => Number(item?.value) > 0)
+                            .slice(0, 3);
+                          const negativeFeatures = allShapFeatures
+                            .filter((item) => Number(item?.value) < 0)
+                            .slice(0, 3);
+
+                          if (!isShapAvailable) {
+                            return (
+                              <div className="compare-shap-fallback-box">
+                                <p className="compare-shap-fallback">
+                                  {shapData?.message || 'SHAP explanation unavailable for this posting (requires research mode with background dataset).'}
+                                </p>
+                                <p className="compare-shap-disclaimer">
+                                  Model contributions require active research artifacts · Not ground truth
+                                </p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <>
+                              <div className="compare-shap-factors">
+                                <div className="compare-shap-group">
+                                  <span className="compare-shap-group-title positive">
+                                    <span className="shap-dot positive" /> Positive contributions (pushed score higher)
+                                  </span>
+                                  {positiveFeatures.length > 0 ? (
+                                    <ul className="compare-shap-list">
+                                      {positiveFeatures.map((item, idx) => (
+                                        <li key={idx} className="compare-shap-item">
+                                          <span className="compare-shap-feature" title={item.feature}>
+                                            {labelize(String(item.feature || '').replace(/^.*__/, ''))}
+                                          </span>
+                                          <strong className="compare-shap-value positive-text">
+                                            +{Number(item.value).toFixed(3)}
+                                          </strong>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="compare-shap-empty">No positive factors in top drivers</p>
+                                  )}
+                                </div>
+
+                                <div className="compare-shap-group">
+                                  <span className="compare-shap-group-title negative">
+                                    <span className="shap-dot negative" /> Negative contributions (pushed score lower)
+                                  </span>
+                                  {negativeFeatures.length > 0 ? (
+                                    <ul className="compare-shap-list">
+                                      {negativeFeatures.map((item, idx) => (
+                                        <li key={idx} className="compare-shap-item">
+                                          <span className="compare-shap-feature" title={item.feature}>
+                                            {labelize(String(item.feature || '').replace(/^.*__/, ''))}
+                                          </span>
+                                          <strong className="compare-shap-value negative-text">
+                                            {Number(item.value).toFixed(3)}
+                                          </strong>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="compare-shap-empty">No negative factors in top drivers</p>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="compare-shap-notice">
+                                Raw signed contributions relative to the background baseline. Unlisted features were not among this posting’s top 12 drivers (not zero). History entries do not track model version identifiers; direct numeric comparisons apply only under the same model build.
+                              </p>
+                              <p className="compare-shap-disclaimer">
+                                Explains model output · Not ground truth · Not proof of fraud or causation
+                              </p>
+                            </>
+                          );
+                        })()}
+                      </div>
+
                       <div className="compare-ai-section">
                         <span className="compare-section-label">AI-TEXT ESTIMATE</span>
                         <div className="compare-ai-score-box">
