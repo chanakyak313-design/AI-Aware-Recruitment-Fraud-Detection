@@ -28,7 +28,10 @@
 .mode-toggle-btn:focus-visible,
 .batch-inspect-btn:focus-visible,
 .batch-dropzone:focus-visible,
-.batch-export-btn:focus-visible {
+.batch-export-btn:focus-visible,
+.history-inspect-btn:focus-visible,
+.history-clear-btn:focus-visible,
+.history-table-container:focus-visible {
   outline: 2px solid #7186ff !important;
   outline-offset: 2px !important;
 }
@@ -320,6 +323,129 @@
   color: #94a3b8;
 }
 
+/* Recent Screening History */
+.history-card {
+  padding: 28px;
+  border-radius: 11px;
+}
+.history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.history-clear-btn {
+  padding: 6px 14px;
+  font-size: 0.68rem;
+  color: #ef8796;
+  border-color: #4a202a;
+}
+.history-clear-btn:hover {
+  background: #2b1319;
+  border-color: #ef8796;
+  color: #ffa4b2;
+}
+.history-privacy-note {
+  margin: 18px 0;
+}
+.history-storage-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border-left: 3px solid #f2c66e;
+  background: #1f1a10;
+  border-radius: 0 8px 8px 0;
+  color: #fef08a;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.history-storage-warning strong {
+  color: #fde047;
+}
+.history-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 20px;
+  border: 1px dashed #223247;
+  border-radius: 9px;
+  background: #090e16;
+  text-align: center;
+  margin-top: 10px;
+}
+.history-empty-icon {
+  font-size: 2rem;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+.history-empty-state h4 {
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  margin: 0 0 6px;
+}
+.history-empty-state p {
+  color: #718096;
+  font-size: 0.7rem;
+  max-width: 440px;
+  margin: 0;
+  line-height: 1.5;
+}
+.history-table-container {
+  overflow-x: auto;
+  border: 1px solid #1a2536;
+  border-radius: 8px;
+  margin: 16px 0;
+  background: #090e16;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  text-align: left;
+}
+.history-table th {
+  padding: 11px 12px;
+  background: #0d1420;
+  color: #718096;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1a2536;
+  white-space: nowrap;
+}
+.history-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #131c2a;
+  color: #cbd5e1;
+  vertical-align: middle;
+}
+.history-table tr:hover {
+  background: #0e1624;
+}
+.history-source-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #141e30;
+  border: 1px solid #23334d;
+  color: #93c5fd;
+}
+.history-inspect-btn {
+  padding: 5px 10px;
+  font-size: 0.64rem;
+  min-height: auto;
+}
+
 @media(max-width:800px) {
   .mode-toggle-btn {
     min-height: 38px;
@@ -327,9 +453,15 @@
     align-items: center;
     justify-content: center;
   }
-  .batch-inspect-btn {
+  .batch-inspect-btn,
+  .history-inspect-btn,
+  .history-clear-btn {
     min-height: 38px;
     padding: 8px 12px;
+  }
+  .history-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
   .batch-file-info {
     flex-direction: column;

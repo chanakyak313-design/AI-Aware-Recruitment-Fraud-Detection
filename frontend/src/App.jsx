@@ -811,7 +811,81 @@ function exportBatchResultsToCSV(results, fileName) {
   URL.revokeObjectURL(url);
 }
 
-function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
+/*
+ * ============================================================
+ * SCREENING HISTORY (SESSION STORAGE)
+ * ============================================================
+ */
+const SESSION_STORAGE_KEY = 'jobshield_screening_history';
+const MAX_HISTORY_ITEMS = 15;
+
+function formatDateTime(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  } catch {
+    return new Date().toLocaleString();
+  }
+}
+
+function getSessionHistory() {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+      return { items: [], error: 'Session storage is not supported in this environment.' };
+    }
+    const data = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!data) return { items: [], error: null };
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      return { items: parsed, error: null };
+    }
+    return { items: [], error: null };
+  } catch (err) {
+    return {
+      items: [],
+      error: 'Browser session storage is unavailable or restricted. History cannot be saved, but analysis continues to work.',
+    };
+  }
+}
+
+function saveSessionHistory(items) {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+      return { success: false, error: 'Session storage is not supported in this environment.' };
+    }
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(items));
+    return { success: true, error: null };
+  } catch (err) {
+    const isQuota =
+      err &&
+      (err.name === 'QuotaExceededError' ||
+        err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        err.code === 22 ||
+        err.code === 1014);
+    const msg = isQuota
+      ? 'Browser session storage is full. Screening history could not be saved, but analysis continues to work.'
+      : 'Browser session storage is unavailable or restricted. History could not be saved, but analysis continues to work.';
+    return { success: false, error: msg };
+  }
+}
+
+function clearSessionHistory() {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: 'Failed to clear session storage.' };
+  }
+}
+
+function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvailable }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [parsedJobs, setParsedJobs] = useState([]);
@@ -939,7 +1013,7 @@ function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
 
         if (setApiAvailable) setApiAvailable(true);
 
-        updatedResults[i] = {
+        const successItem = {
           ...updatedResults[i],
           status: 'success',
           fraud_probability: body.fraud_probability,
@@ -949,6 +1023,23 @@ function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
           rawResult: body,
           error: null,
         };
+        updatedResults[i] = successItem;
+
+        if (onSaveHistoryItem) {
+          onSaveHistoryItem({
+            id: `hist_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`,
+            timestamp: new Date().toISOString(),
+            dateTime: formatDateTime(new Date()),
+            title: payload.title?.trim() || 'Untitled posting',
+            company: payload.company?.trim() || '—',
+            risk_level: body.risk_level || 'UNKNOWN',
+            fraud_probability: body.fraud_probability,
+            ai_generation_probability: body.ai_generation_probability,
+            source: 'batch',
+            payload: { ...payload },
+            result: body,
+          });
+        }
       } catch (err) {
         if (abortController.signal.aborted) {
           updatedResults[i] = {
@@ -1008,7 +1099,7 @@ function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
       <div className="batch-privacy-note" role="note">
         <Icon>ℹ</Icon>
         <div>
-          <strong>Privacy notice:</strong> The CSV is read in your browser and is not stored by the app. Each job posting is sent to the configured analysis server, as it is for individual analysis.
+          <strong>Privacy notice:</strong> The CSV is read in your browser and is not stored by the app. Each job posting is sent to the configured analysis server, as it is for individual analysis. Job details and results may be kept temporarily in this tab’s history, can be cleared with Clear History, and are removed when the tab closes.
         </div>
       </div>
 
@@ -1199,6 +1290,106 @@ function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
   );
 }
 
+function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
+  return (
+    <section className="surface history-card">
+      <div className="section-head history-head">
+        <div>
+          <span className="overline">SCREENING HISTORY</span>
+          <h2>Recent screening history</h2>
+          <p>
+            Review and reopen recent single-job and batch analyses completed in this browser tab. Up to 15 recent analyses are saved.
+          </p>
+        </div>
+        {history && history.length > 0 && (
+          <button
+            type="button"
+            className="ghost-button history-clear-btn"
+            onClick={onClearHistory}
+            title="Clear all saved screening history from this session"
+          >
+            Clear History
+          </button>
+        )}
+      </div>
+
+      <div className="batch-privacy-note history-privacy-note" role="note">
+        <Icon>ℹ</Icon>
+        <div>
+          <strong>Privacy notice:</strong> Job details and results may be kept temporarily in this tab’s history, can be cleared with Clear History, and are removed when the tab closes. Each posting is sent to the configured analysis server, as it is for individual analysis.
+        </div>
+      </div>
+
+      {storageError && (
+        <div className="history-storage-warning" role="alert">
+          <Icon>!</Icon>
+          <div>
+            <strong>Storage notice:</strong> {storageError}
+          </div>
+        </div>
+      )}
+
+      {(!history || history.length === 0) ? (
+        <div className="history-empty-state">
+          <span className="history-empty-icon">⏱</span>
+          <h4>No screening history yet</h4>
+          <p>
+            When you run single-job analyses or successful CSV batch screenings, they will appear here during this session.
+          </p>
+        </div>
+      ) : (
+        <div className="history-table-container" tabIndex={0} aria-label="Recent screening history table">
+          <table className="history-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Job Title</th>
+                <th>Company</th>
+                <th>Date / Time</th>
+                <th>Risk Level</th>
+                <th>Type</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item, idx) => (
+                <tr key={item.id || idx}>
+                  <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{idx + 1}</td>
+                  <td style={{ fontWeight: 600 }}>{item.title}</td>
+                  <td>{item.company}</td>
+                  <td style={{ fontFamily: 'DM Mono', fontSize: '0.68rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    {item.dateTime}
+                  </td>
+                  <td>
+                    <span className={`batch-risk-pill ${(item.risk_level || 'unknown').toLowerCase()}`}>
+                      {item.risk_level || 'UNKNOWN'} RISK
+                    </span>
+                  </td>
+                  <td>
+                    <span className="history-source-badge">
+                      {item.source === 'batch' ? 'Batch' : 'Single'}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="ghost-button history-inspect-btn"
+                      title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                      onClick={() => onInspect(item)}
+                    >
+                      Inspect <span>→</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Analyzer({
   form,
   setForm,
@@ -1215,6 +1406,10 @@ function Analyzer({
   onLoadPreset,
   API_BASE_URL,
   setApiAvailable,
+  history,
+  onSaveHistoryItem,
+  onClearHistory,
+  storageError,
 }) {
   const [analyzerMode, setAnalyzerMode] = useState('single');
 
@@ -1257,10 +1452,28 @@ function Analyzer({
           >
             CSV batch screening
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={analyzerMode === 'history'}
+            className={`mode-toggle-btn ${analyzerMode === 'history' ? 'active' : ''}`}
+            onClick={() => setAnalyzerMode('history')}
+          >
+            Recent history {history?.length > 0 ? `(${history.length})` : ''}
+          </button>
         </div>
       </div>
 
-      {analyzerMode === 'single' ? (
+      {storageError && analyzerMode !== 'history' && (
+        <div className="history-storage-warning" role="alert" style={{ marginBottom: '20px' }}>
+          <Icon>!</Icon>
+          <div>
+            <strong>Storage notice:</strong> {storageError}
+          </div>
+        </div>
+      )}
+
+      {analyzerMode === 'single' && (
         <div className="analyzer-grid">
           <section className="surface editor-card">
             <div className="section-head">
@@ -1468,15 +1681,31 @@ function Analyzer({
             )}
           </section>
         </div>
-      ) : (
+      )}
+
+      {analyzerMode === 'batch' && (
         <BatchScreening
           onInspect={(row) => {
             setForm(row.payload);
             setResult(row.rawResult);
             setAnalyzerMode('single');
           }}
+          onSaveHistoryItem={onSaveHistoryItem}
           API_BASE_URL={API_BASE_URL}
           setApiAvailable={setApiAvailable}
+        />
+      )}
+
+      {analyzerMode === 'history' && (
+        <RecentHistory
+          history={history}
+          onInspect={(item) => {
+            setForm(item.payload);
+            setResult(item.result);
+            setAnalyzerMode('single');
+          }}
+          onClearHistory={onClearHistory}
+          storageError={storageError}
         />
       )}
     </div>
@@ -2312,6 +2541,39 @@ function App() {
 
   /*
    * ============================================================
+   * SCREENING HISTORY STATE (SESSION STORAGE)
+   * ============================================================
+   */
+  const [history, setHistory] = useState(() => {
+    const { items } = getSessionHistory();
+    return items;
+  });
+  const [storageError, setStorageError] = useState(() => {
+    const { error } = getSessionHistory();
+    return error;
+  });
+
+  const addHistoryItem = (item) => {
+    setHistory((prevHistory) => {
+      const updated = [item, ...prevHistory.filter((h) => h.id !== item.id)].slice(0, MAX_HISTORY_ITEMS);
+      const saveRes = saveSessionHistory(updated);
+      if (!saveRes.success) {
+        setStorageError(saveRes.error);
+      } else {
+        setStorageError(null);
+      }
+      return updated;
+    });
+  };
+
+  const handleClearHistory = () => {
+    clearSessionHistory();
+    setHistory([]);
+    setStorageError(null);
+  };
+
+  /*
+   * ============================================================
    * BACKEND HEALTH / INITIAL DATA
    * ============================================================
    */
@@ -2498,6 +2760,19 @@ function App() {
 
       setResult(body);
       setApiAvailable(true);
+      addHistoryItem({
+        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        dateTime: formatDateTime(new Date()),
+        title: form.title?.trim() || 'Untitled posting',
+        company: form.company?.trim() || '—',
+        risk_level: body.risk_level || 'UNKNOWN',
+        fraud_probability: body.fraud_probability,
+        ai_generation_probability: body.ai_generation_probability,
+        source: 'single',
+        payload: { ...form },
+        result: body,
+      });
     } catch (requestError) {
       console.error('Analysis error:', requestError);
 
@@ -2564,6 +2839,10 @@ function App() {
               onLoadPreset={loadPreset}
               API_BASE_URL={API_BASE_URL}
               setApiAvailable={setApiAvailable}
+              history={history}
+              onSaveHistoryItem={addHistoryItem}
+              onClearHistory={handleClearHistory}
+              storageError={storageError}
             />
           )}
 
