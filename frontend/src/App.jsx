@@ -562,7 +562,16 @@ function Analyzer({
           </div>
 
           {result && (
-            <span className="complete-label">COMPLETE</span>
+            <div className="preview-header-actions">
+              <span className="complete-label">COMPLETE</span>
+              <button
+                type="button"
+                className="ghost-button print-report-btn"
+                onClick={() => window.print()}
+              >
+                Print report
+              </button>
+            </div>
           )}
         </div>
 
@@ -1199,6 +1208,220 @@ function Methodology({ setTab }) {
   );
 }
 
+function PrintReport({ form, result }) {
+  const generatedAt = useMemo(() => new Date().toLocaleString(), [result]);
+  const aiValue = result.ai_generation_probability;
+  const aiFormatted =
+    aiValue == null ? 'Not available' : percent(aiValue, 1);
+
+  const autopsy = result.autopsy || {};
+  const safety = autopsy.safety || [];
+  const salary = autopsy.salary || {};
+  const missingInfo = autopsy.missing_information || [];
+  const shap = result.shap;
+  const shapFeatures = shap?.features || [];
+
+  return (
+    <div className="print-report-container" aria-hidden="true">
+      <header className="print-header">
+        <div className="print-brand">
+          <h1>JobShield AI</h1>
+          <span className="print-subtitle">Recruitment Fraud Intelligence Report</span>
+        </div>
+        <div className="print-meta">
+          <div><strong>Generated:</strong> {generatedAt}</div>
+          <div><strong>Analysis Mode:</strong> {result.mode || 'Standard'}</div>
+        </div>
+      </header>
+
+      <section className="print-section">
+        <h2 className="print-section-title">01 / Evaluated Job Posting Information</h2>
+        <table className="print-table">
+          <tbody>
+            <tr>
+              <th>Job Title</th>
+              <td>{form?.title || 'Not provided'}</td>
+              <th>Company Name</th>
+              <td>{form?.company || 'Not provided'}</td>
+            </tr>
+            <tr>
+              <th>Location</th>
+              <td>{form?.location || 'Not provided'}</td>
+              <th>Employment Type</th>
+              <td>{form?.employment_type || 'Not provided'}</td>
+            </tr>
+            <tr>
+              <th>Experience Level</th>
+              <td>{form?.experience || 'Not provided'}</td>
+              <th>Stated Salary</th>
+              <td>{form?.salary || 'Not stated'}</td>
+            </tr>
+            <tr>
+              <th>Contact Email</th>
+              <td>{form?.email || 'Not provided'}</td>
+              <th>Company Website</th>
+              <td>{form?.website || 'Not provided'}</td>
+            </tr>
+            <tr>
+              <th>Provided Application URL</th>
+              <td colSpan="3">{form?.application_url || 'Not provided'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section className="print-section">
+        <h2 className="print-section-title">02 / Assessment Summary (Independent Models)</h2>
+        <div className="print-pillars-grid">
+          <div className="print-pillar-card">
+            <span className="print-pillar-tag">FRAUD RISK ASSESSMENT</span>
+            <div className="print-pillar-metric">
+              <span className="print-metric-value">{percent(result.fraud_probability, 1)}</span>
+              <span className="print-metric-sub">{result.risk_level || 'REVIEW'} RISK LEVEL</span>
+            </div>
+            <p className="print-pillar-desc">
+              Fraud model probability assessment based on structured signals and posting content.
+            </p>
+          </div>
+
+          <div className="print-pillar-card">
+            <span className="print-pillar-tag">AI-TEXT WRITING ANALYSIS (ESTIMATE)</span>
+            <div className="print-pillar-metric">
+              <span className="print-metric-value">{aiFormatted}</span>
+            </div>
+            <p className="print-pillar-desc">
+              Stylometric text pattern probability. The AI-text score is an estimate and does not prove fraud or authorship. Writing style is analyzed independently from fraudulent intent.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="print-section">
+        <h2 className="print-section-title">03 / Observed Indicators</h2>
+        <div className="print-signals-grid">
+          <div className="print-signal-box">
+            <h3>Fraud Indicators ({result.fraud_indicators?.length || 0})</h3>
+            {result.fraud_indicators?.length ? (
+              <ul className="print-list">
+                {result.fraud_indicators.map((ind, i) => (
+                  <li key={i}>{ind}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="print-empty-note">No strong fraud indicators were detected in this posting.</p>
+            )}
+          </div>
+          <div className="print-signal-box">
+            <h3>AI Stylometric Writing Indicators ({result.ai_indicators?.length || 0})</h3>
+            {result.ai_indicators?.length ? (
+              <ul className="print-list">
+                {result.ai_indicators.map((ind, i) => (
+                  <li key={i}>{ind}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="print-empty-note">No prominent stylometric patterns detected.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="print-section">
+        <h2 className="print-section-title">04 / Pre-Application Safety & Verification Checklist</h2>
+        {safety.length > 0 ? (
+          <table className="print-table print-checklist-table">
+            <thead>
+              <tr>
+                <th style={{ width: '25%' }}>Safety Check</th>
+                <th style={{ width: '20%' }}>Status</th>
+                <th>Observed Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safety.map((item, idx) => (
+                <tr key={idx}>
+                  <td><strong>{item.item}</strong></td>
+                  <td>
+                    <span className={`print-check-badge badge-${item.status}`}>
+                      {item.status === 'present' || item.status === 'clear'
+                        ? 'PASS / CLEAR'
+                        : item.status === 'risk'
+                          ? 'ATTENTION NEEDED'
+                          : 'OMITTED / MISSING'}
+                    </span>
+                  </td>
+                  <td>{item.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="print-empty-note">Safety checklist details unavailable.</p>
+        )}
+
+        <div className="print-subbox">
+          <h3>Missing or Unverified Information</h3>
+          <p>
+            {missingInfo.length > 0
+              ? missingInfo.join(' · ')
+              : 'Core posting details were supplied.'}
+          </p>
+          {salary.note && (
+            <p className="print-salary-note">
+              <strong>Salary status:</strong> {salary.status === 'stated' ? salary.listed_value : 'Not stated'}
+              {salary.format ? ` (${labelize(salary.format)})` : ''} — {salary.note}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {shap?.available && shapFeatures.length > 0 && (
+        <section className="print-section">
+          <h2 className="print-section-title">05 / Model Feature Contributions (SHAP)</h2>
+          <p className="print-shap-note">
+            Top features influencing the fraud classification model. Positive values indicate features pushing toward fraud classification; negative values indicate features pushing away. Feature contributions indicate model behavior, not proof of causation or intent.
+          </p>
+          <table className="print-table print-shap-table">
+            <thead>
+              <tr>
+                <th style={{ width: '45%' }}>Feature</th>
+                <th style={{ width: '25%' }}>SHAP Value</th>
+                <th style={{ width: '30%' }}>Model Influence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shapFeatures.map((item, idx) => {
+                const val = Number(item.value);
+                const isPositive = val >= 0;
+                return (
+                  <tr key={idx}>
+                    <td><code>{labelize(String(item.feature || '').replace(/^.*__/, ''))}</code></td>
+                    <td className={isPositive ? 'print-pos' : 'print-neg'}>
+                      {isPositive ? '+' : ''}{val.toFixed(4)}
+                    </td>
+                    <td>
+                      {isPositive ? 'Pushes toward fraud' : 'Pushes away from fraud'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <footer className="print-footer">
+        <p className="print-disclaimer">
+          <strong>Disclaimer:</strong> {result.disclaimer || 'Model outputs are decision-support signals and not definitive proof of fraud.'}
+        </p>
+        <p className="print-footer-sub">
+          JobShield AI · Decision support only. AI-generated text does not inherently indicate fraudulent intent.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = useState('overview');
   const [form, setForm] = useState(emptyForm);
@@ -1425,86 +1648,90 @@ function App() {
   };
 
   return (
-    <div className="app-frame">
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        mode={mode}
-        apiAvailable={apiAvailable}
-      />
-
-      <main className="main-content">
-        <Topbar
-          mode={mode}
+    <>
+      <div className="app-frame">
+        <Sidebar
           tab={tab}
-          onAnalyze={() => setTab('analyzer')}
+          setTab={setTab}
+          mode={mode}
+          apiAvailable={apiAvailable}
         />
 
-        {tab === 'overview' && (
-          <Overview
-            modelInfo={modelInfo}
-            setTab={setTab}
-          />
-        )}
-
-        {tab === 'analyzer' && (
-          <Analyzer
-            form={form}
-            setForm={setForm}
-            result={result}
-            loading={loading}
-            error={error}
-            onAnalyze={analyze}
-            onDemo={tryDemo}
-            onClear={clearForm}
-            comparisonDraft={comparisonDraft}
-            setComparisonDraft={setComparisonDraft}
-            activePreset={activePreset}
-            onLoadPreset={loadPreset}
-          />
-        )}
-
-        {tab === 'research' && (
-          <Research
-            research={research}
+        <main className="main-content">
+          <Topbar
             mode={mode}
+            tab={tab}
+            onAnalyze={() => setTab('analyzer')}
           />
-        )}
 
-        {tab === 'methodology' && (
-          <Methodology setTab={setTab} />
-        )}
+          {tab === 'overview' && (
+            <Overview
+              modelInfo={modelInfo}
+              setTab={setTab}
+            />
+          )}
 
-        {tab === 'extension' && (
-          <section className="surface extension-page">
-            <span className="overline">
-              BROWSER WORKFLOW
-            </span>
+          {tab === 'analyzer' && (
+            <Analyzer
+              form={form}
+              setForm={setForm}
+              result={result}
+              loading={loading}
+              error={error}
+              onAnalyze={analyze}
+              onDemo={tryDemo}
+              onClear={clearForm}
+              comparisonDraft={comparisonDraft}
+              setComparisonDraft={setComparisonDraft}
+              activePreset={activePreset}
+              onLoadPreset={loadPreset}
+            />
+          )}
 
-            <h2>Analyze where the job lives.</h2>
+          {tab === 'research' && (
+            <Research
+              research={research}
+              mode={mode}
+            />
+          )}
 
-            <p>
-              The Manifest V3 extension extracts visible job
-              information, lets you review it, and sends it only when
-              you click Analyze. Dedicated adapters and a generic
-              fallback keep the workflow ready for multiple portals.
-            </p>
+          {tab === 'methodology' && (
+            <Methodology setTab={setTab} />
+          )}
 
-            <button
-              className="primary-button"
-              onClick={() => setTab('analyzer')}
-            >
-              Open analyzer <span>→</span>
-            </button>
-          </section>
-        )}
+          {tab === 'extension' && (
+            <section className="surface extension-page">
+              <span className="overline">
+                BROWSER WORKFLOW
+              </span>
 
-        <footer>
-          JobShield AI <span>·</span> Decision support only. AI-generated
-          content does not inherently indicate fraudulent intent.
-        </footer>
-      </main>
-    </div>
+              <h2>Analyze where the job lives.</h2>
+
+              <p>
+                The Manifest V3 extension extracts visible job
+                information, lets you review it, and sends it only when
+                you click Analyze. Dedicated adapters and a generic
+                fallback keep the workflow ready for multiple portals.
+              </p>
+
+              <button
+                className="primary-button"
+                onClick={() => setTab('analyzer')}
+              >
+                Open analyzer <span>→</span>
+              </button>
+            </section>
+          )}
+
+          <footer>
+            JobShield AI <span>·</span> Decision support only. AI-generated
+            content does not inherently indicate fraudulent intent.
+          </footer>
+        </main>
+      </div>
+
+      {result && <PrintReport form={form} result={result} />}
+    </>
   );
 }
 
