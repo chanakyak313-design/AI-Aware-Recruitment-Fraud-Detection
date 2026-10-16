@@ -968,6 +968,8 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
   const [status, setStatus] = useState('idle'); // 'idle' | 'ready' | 'processing' | 'completed' | 'cancelled'
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
+  const [filterRisk, setFilterRisk] = useState('ALL'); // 'ALL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'FAILED'
+  const [filterSignal, setFilterSignal] = useState(null);
   const abortControllerRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -983,6 +985,8 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
     setStatus('idle');
     setCurrentIndex(0);
     setResults([]);
+    setFilterRisk('ALL');
+    setFilterSignal(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -1021,6 +1025,8 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
 
     setStatus('processing');
     setCurrentIndex(0);
+    setFilterRisk('ALL');
+    setFilterSignal(null);
     const initialResults = parsedJobs.map((j) => ({
       id: j.id,
       payload: j.payload,
@@ -1153,12 +1159,119 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
     exportBatchResultsToCSV(results, fileName);
   };
 
-  const completedCount = results.filter((r) => r.status === 'success' || r.status === 'failed').length;
+  const completedRows = useMemo(
+    () => results.filter((r) => r.status === 'success' || r.status === 'failed'),
+    [results]
+  );
+  const completedCount = completedRows.length;
   const progressPercent = parsedJobs.length > 0 ? Math.round((completedCount / parsedJobs.length) * 100) : 0;
+
+  const successRows = useMemo(
+    () => results.filter((r) => r.status === 'success'),
+    [results]
+  );
   const highRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'HIGH').length;
   const medRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'MEDIUM').length;
   const lowRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'LOW').length;
   const failedCount = results.filter((r) => r.status === 'failed').length;
+
+  const highRiskPct = completedCount > 0 ? (highRiskCount / completedCount) * 100 : 0;
+  const medRiskPct = completedCount > 0 ? (medRiskCount / completedCount) * 100 : 0;
+  const lowRiskPct = completedCount > 0 ? (lowRiskCount / completedCount) * 100 : 0;
+  const failedPct = completedCount > 0 ? (failedCount / completedCount) * 100 : 0;
+
+  const scoreBins = useMemo(() => {
+    const bins = [
+      { label: '0% – 25%', range: 'Low risk band', count: 0, color: '#6de0ad' },
+      { label: '26% – 50%', range: 'Moderate band', count: 0, color: '#93c5fd' },
+      { label: '51% – 75%', range: 'Elevated band', count: 0, color: '#f2c66e' },
+      { label: '76% – 100%', range: 'Severe band', count: 0, color: '#ef8796' },
+    ];
+    successRows.forEach((r) => {
+      if (r.fraud_probability == null || isNaN(Number(r.fraud_probability))) return;
+      const p = Number(r.fraud_probability);
+      if (p <= 0.25) bins[0].count++;
+      else if (p <= 0.5) bins[1].count++;
+      else if (p <= 0.75) bins[2].count++;
+      else bins[3].count++;
+    });
+    return bins;
+  }, [successRows]);
+
+  const maxBinCount = useMemo(() => {
+    return Math.max(...scoreBins.map((b) => b.count), 1);
+  }, [scoreBins]);
+
+  const recurringSignals = useMemo(() => {
+    const map = new Map();
+    successRows.forEach((r) => {
+      const indicators = (r.fraud_indicators || []).filter(
+        (ind) => ind && ind !== 'No strong fraud indicators were detected'
+      );
+      indicators.forEach((sig) => {
+        map.set(sig, (map.get(sig) || 0) + 1);
+      });
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+  }, [successRows]);
+
+  const aiStats = useMemo(() => {
+    let elevated = 0;
+    let lower = 0;
+    let unavailable = 0;
+    successRows.forEach((r) => {
+      if (r.ai_generation_probability == null || isNaN(Number(r.ai_generation_probability))) {
+        unavailable++;
+      } else if (Number(r.ai_generation_probability) >= 0.75) {
+        elevated++;
+      } else {
+        lower++;
+      }
+    });
+    const evaluated = elevated + lower;
+    return {
+      evaluated,
+      elevated,
+      lower,
+      unavailable,
+      elevatedPct: evaluated > 0 ? (elevated / evaluated) * 100 : 0,
+      lowerPct: evaluated > 0 ? (lower / evaluated) * 100 : 0,
+    };
+  }, [successRows]);
+
+  const handleToggleRiskFilter = (risk) => {
+    setFilterRisk((prev) => (prev === risk ? 'ALL' : risk));
+  };
+
+  const handleToggleSignalFilter = (sigName) => {
+    setFilterSignal((prev) => (prev === sigName ? null : sigName));
+  };
+
+  const handleClearFilters = () => {
+    setFilterRisk('ALL');
+    setFilterSignal(null);
+  };
+
+  const filteredResults = useMemo(() => {
+    return results.filter((row) => {
+      if (filterRisk !== 'ALL') {
+        if (filterRisk === 'FAILED') {
+          if (row.status !== 'failed') return false;
+        } else {
+          if (row.status !== 'success' || row.risk_level !== filterRisk) return false;
+        }
+      }
+      if (filterSignal) {
+        if (row.status !== 'success') return false;
+        const indicators = row.fraud_indicators || [];
+        if (!indicators.includes(filterSignal)) return false;
+      }
+      return true;
+    });
+  }, [results, filterRisk, filterSignal]);
 
   return (
     <section className="surface batch-card">
@@ -1253,15 +1366,265 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
 
           {results.length > 0 && (
             <>
-              <div className="batch-summary-stats">
-                <span className="batch-stat-badge">Screened: <b>{completedCount} / {parsedJobs.length}</b></span>
-                <span className="batch-stat-badge" style={{ borderColor: '#5a2632' }}>High risk: <b style={{ color: '#ef8796' }}>{highRiskCount}</b></span>
-                <span className="batch-stat-badge" style={{ borderColor: '#544120' }}>Medium risk: <b style={{ color: '#f2c66e' }}>{medRiskCount}</b></span>
-                <span className="batch-stat-badge" style={{ borderColor: '#204d37' }}>Low risk: <b style={{ color: '#6de0ad' }}>{lowRiskCount}</b></span>
-                {failedCount > 0 && (
-                  <span className="batch-stat-badge" style={{ borderColor: '#481f28' }}>Failed: <b style={{ color: '#ff8e9c' }}>{failedCount}</b></span>
-                )}
-              </div>
+              {completedCount > 0 ? (
+                <div className="batch-insights-dashboard" aria-label="Batch screening insights dashboard">
+                  <div className="batch-insights-head">
+                    <div>
+                      <span className="overline">BATCH SCREENING INSIGHTS</span>
+                      <h3>Batch Analysis Overview</h3>
+                      <p>
+                        Aggregated risk breakdown, probability spectrum, and recurring fraud patterns for this batch. Click any risk card or recurring signal to filter the results table below.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="batch-insights-grid" role="region" aria-label="Risk-level breakdown filters">
+                    <button
+                      type="button"
+                      className={`batch-insight-card high ${filterRisk === 'HIGH' ? 'active' : ''}`}
+                      onClick={() => handleToggleRiskFilter('HIGH')}
+                      aria-pressed={filterRisk === 'HIGH'}
+                      title="Click to filter table to High Risk postings"
+                    >
+                      <div className="batch-insight-card-head">
+                        <span>High Risk</span>
+                        <span className="shap-dot positive" />
+                      </div>
+                      <strong className="batch-insight-count">{highRiskCount}</strong>
+                      <span className="batch-insight-pct">{highRiskPct.toFixed(1)}% of screened</span>
+                      <span className="batch-insight-hint">
+                        {filterRisk === 'HIGH' ? 'Active filter · Click to clear' : 'Click to filter table'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`batch-insight-card medium ${filterRisk === 'MEDIUM' ? 'active' : ''}`}
+                      onClick={() => handleToggleRiskFilter('MEDIUM')}
+                      aria-pressed={filterRisk === 'MEDIUM'}
+                      title="Click to filter table to Medium Risk postings"
+                    >
+                      <div className="batch-insight-card-head">
+                        <span>Medium Risk</span>
+                        <span className="shap-dot" style={{ background: '#f2c66e' }} />
+                      </div>
+                      <strong className="batch-insight-count">{medRiskCount}</strong>
+                      <span className="batch-insight-pct">{medRiskPct.toFixed(1)}% of screened</span>
+                      <span className="batch-insight-hint">
+                        {filterRisk === 'MEDIUM' ? 'Active filter · Click to clear' : 'Click to filter table'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`batch-insight-card low ${filterRisk === 'LOW' ? 'active' : ''}`}
+                      onClick={() => handleToggleRiskFilter('LOW')}
+                      aria-pressed={filterRisk === 'LOW'}
+                      title="Click to filter table to Low Risk postings"
+                    >
+                      <div className="batch-insight-card-head">
+                        <span>Low Risk</span>
+                        <span className="shap-dot" style={{ background: '#6de0ad' }} />
+                      </div>
+                      <strong className="batch-insight-count">{lowRiskCount}</strong>
+                      <span className="batch-insight-pct">{lowRiskPct.toFixed(1)}% of screened</span>
+                      <span className="batch-insight-hint">
+                        {filterRisk === 'LOW' ? 'Active filter · Click to clear' : 'Click to filter table'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`batch-insight-card failed ${filterRisk === 'FAILED' ? 'active' : ''}`}
+                      onClick={() => handleToggleRiskFilter('FAILED')}
+                      aria-pressed={filterRisk === 'FAILED'}
+                      title="Click to filter table to Failed postings"
+                    >
+                      <div className="batch-insight-card-head">
+                        <span>Failed / Error</span>
+                        <span className="shap-dot" style={{ background: '#ff8e9c' }} />
+                      </div>
+                      <strong className="batch-insight-count">{failedCount}</strong>
+                      <span className="batch-insight-pct">{failedPct.toFixed(1)}% of screened</span>
+                      <span className="batch-insight-hint">
+                        {filterRisk === 'FAILED' ? 'Active filter · Click to clear' : 'Click to filter table'}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="batch-proportion-container">
+                    <div className="batch-proportion-title">
+                      <span>Risk Tier Proportion</span>
+                      <span>{completedCount} of {parsedJobs.length} screened</span>
+                    </div>
+                    <div
+                      className="batch-proportion-bar"
+                      role="img"
+                      aria-label={`Risk distribution: ${highRiskCount} High (${highRiskPct.toFixed(1)}%), ${medRiskCount} Medium (${medRiskPct.toFixed(1)}%), ${lowRiskCount} Low (${lowRiskPct.toFixed(1)}%), ${failedCount} Failed (${failedPct.toFixed(1)}%)`}
+                    >
+                      {highRiskCount > 0 && (
+                        <div
+                          className="batch-proportion-seg high"
+                          style={{ width: `${highRiskPct}%` }}
+                          title={`High Risk: ${highRiskCount} (${highRiskPct.toFixed(1)}%)`}
+                        />
+                      )}
+                      {medRiskCount > 0 && (
+                        <div
+                          className="batch-proportion-seg medium"
+                          style={{ width: `${medRiskPct}%` }}
+                          title={`Medium Risk: ${medRiskCount} (${medRiskPct.toFixed(1)}%)`}
+                        />
+                      )}
+                      {lowRiskCount > 0 && (
+                        <div
+                          className="batch-proportion-seg low"
+                          style={{ width: `${lowRiskPct}%` }}
+                          title={`Low Risk: ${lowRiskCount} (${lowRiskPct.toFixed(1)}%)`}
+                        />
+                      )}
+                      {failedCount > 0 && (
+                        <div
+                          className="batch-proportion-seg failed"
+                          style={{ width: `${failedPct}%` }}
+                          title={`Failed: ${failedCount} (${failedPct.toFixed(1)}%)`}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="batch-subgrid">
+                    <div className="batch-subcard">
+                      <h4 className="batch-subcard-title">Fraud Score Spectrum</h4>
+                      <div className="batch-spectrum-list" role="list">
+                        {scoreBins.map((bin) => {
+                          const fillWidth = maxBinCount > 0 ? (bin.count / maxBinCount) * 100 : 0;
+                          return (
+                            <div className="batch-spectrum-row" key={bin.label} role="listitem">
+                              <span className="batch-spectrum-label">{bin.label}</span>
+                              <div className="batch-spectrum-track">
+                                <div
+                                  className="batch-spectrum-fill"
+                                  style={{
+                                    width: `${fillWidth}%`,
+                                    backgroundColor: bin.color,
+                                  }}
+                                  title={`${bin.range}: ${bin.count} postings`}
+                                />
+                              </div>
+                              <strong className="batch-spectrum-count">{bin.count}</strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="batch-subcard">
+                      <h4 className="batch-subcard-title">Top Recurring Fraud Signals</h4>
+                      {recurringSignals.length > 0 ? (
+                        <div className="batch-signals-list" role="group" aria-label="Recurring fraud signals">
+                          {recurringSignals.map((sig) => (
+                            <button
+                              type="button"
+                              key={sig.name}
+                              className={`batch-signal-btn ${filterSignal === sig.name ? 'active' : ''}`}
+                              onClick={() => handleToggleSignalFilter(sig.name)}
+                              aria-pressed={filterSignal === sig.name}
+                              title={`Click to filter table to postings with signal: "${sig.name}"`}
+                            >
+                              <div className="batch-signal-header">
+                                <span className="batch-signal-name" title={sig.name}>{sig.name}</span>
+                                <span className="batch-signal-badge">{sig.count} job{sig.count !== 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="batch-signal-track">
+                                <div
+                                  className="batch-signal-fill"
+                                  style={{ width: `${Math.min(100, (sig.count / Math.max(completedCount, 1)) * 100)}%` }}
+                                />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="batch-signals-empty">
+                          No strong recurring fraud signals detected across the screened postings.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="batch-ai-summary-card">
+                    <div className="batch-ai-summary-header">
+                      <span className="batch-ai-summary-title">AI-Text Writing Style Summary</span>
+                      <span style={{ fontSize: '0.6rem', color: '#718096', fontFamily: 'DM Mono' }}>
+                        {aiStats.evaluated} of {completedCount} evaluated
+                      </span>
+                    </div>
+                    <div className="batch-ai-metrics-row">
+                      <div className="batch-ai-metric-item">
+                        <span>Possible AI-assisted text (≥75%):</span>
+                        <strong>{aiStats.elevated}</strong>
+                        {aiStats.evaluated > 0 && <span style={{ color: '#8fa1b8', fontSize: '0.62rem' }}>({aiStats.elevatedPct.toFixed(1)}%)</span>}
+                      </div>
+                      <div className="batch-ai-metric-item">
+                        <span>Lower likelihood (&lt;75%):</span>
+                        <strong>{aiStats.lower}</strong>
+                        {aiStats.evaluated > 0 && <span style={{ color: '#8fa1b8', fontSize: '0.62rem' }}>({aiStats.lowerPct.toFixed(1)}%)</span>}
+                      </div>
+                      {aiStats.unavailable > 0 && (
+                        <div className="batch-ai-metric-item">
+                          <span>Not available:</span>
+                          <strong>{aiStats.unavailable}</strong>
+                        </div>
+                      )}
+                    </div>
+                    <p className="batch-ai-disclaimer">
+                      Writing style is analyzed independently from fraud risk. AI-text estimates reflect stylistic patterns (such as vocabulary repetition and perplexity) and do not prove AI authorship, automated generation, or fraudulent intent.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="batch-summary-stats">
+                  <span className="batch-stat-badge">Screened: <b>0 / {parsedJobs.length}</b></span>
+                  <span className="batch-stat-badge">Waiting to start screening…</span>
+                </div>
+              )}
+
+              {(filterRisk !== 'ALL' || filterSignal !== null) && (
+                <div className="batch-filter-banner" role="status" aria-live="polite">
+                  <div className="batch-filter-info">
+                    <span><strong>Active filter:</strong></span>
+                    {filterRisk !== 'ALL' && (
+                      <button
+                        type="button"
+                        className="batch-filter-pill"
+                        onClick={() => setFilterRisk('ALL')}
+                        title="Remove risk filter"
+                      >
+                        Risk: {filterRisk} ✕
+                      </button>
+                    )}
+                    {filterSignal !== null && (
+                      <button
+                        type="button"
+                        className="batch-filter-pill"
+                        onClick={() => setFilterSignal(null)}
+                        title="Remove signal filter"
+                      >
+                        Signal: &ldquo;{filterSignal}&rdquo; ✕
+                      </button>
+                    )}
+                    <span>Showing {filteredResults.length} of {results.length} postings</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button batch-clear-filter-btn"
+                    onClick={handleClearFilters}
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              )}
 
               <div className="batch-table-container">
                 <table className="batch-table">
@@ -1278,68 +1641,79 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map((row) => (
-                      <tr key={row.id}>
-                        <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{row.id}</td>
-                        <td style={{ fontWeight: 600 }}>{row.payload.title || <em style={{ color: '#64748b' }}>No title</em>}</td>
-                        <td>{row.payload.company || <span style={{ color: '#64748b' }}>—</span>}</td>
-                        <td>
-                          {row.status === 'success' && (
-                            <span className={`batch-risk-pill ${row.risk_level.toLowerCase()}`}>
-                              {row.risk_level} RISK
-                            </span>
-                          )}
-                          {row.status === 'failed' && (
-                            <span className="batch-risk-pill failed">FAILED</span>
-                          )}
-                          {row.status === 'analyzing' && (
-                            <span style={{ color: '#7186ff', fontStyle: 'italic', fontSize: '0.62rem' }}>Analyzing…</span>
-                          )}
-                          {row.status === 'pending' && (
-                            <span style={{ color: '#64748b', fontSize: '0.62rem' }}>Queued</span>
-                          )}
-                        </td>
-                        <td style={{ fontFamily: 'DM Mono' }}>
-                          {row.status === 'success' && row.fraud_probability != null
-                            ? `${(row.fraud_probability * 100).toFixed(1)}%`
-                            : '—'}
-                        </td>
-                        <td style={{ fontFamily: 'DM Mono' }}>
-                          {row.status === 'success' && row.ai_generation_probability != null
-                            ? `${(row.ai_generation_probability * 100).toFixed(1)}%`
-                            : row.status === 'success'
-                              ? 'Not available'
-                              : '—'}
-                        </td>
-                        <td className="batch-table-indicators">
-                          {row.status === 'success' ? (
-                            (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').length > 0 ? (
-                              (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').join(' · ')
-                            ) : (
-                              <span style={{ color: '#64748b' }}>No strong fraud indicators</span>
-                            )
-                          ) : row.status === 'failed' ? (
-                            <span style={{ color: '#ff8e9c' }}>{row.error}</span>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td>
-                          {row.status === 'success' ? (
-                            <button
-                              type="button"
-                              className="ghost-button batch-inspect-btn"
-                              title="Inspect this posting in the single-job analysis view with full autopsy and print report"
-                              onClick={() => onInspect(row)}
-                            >
-                              Inspect <span>→</span>
-                            </button>
-                          ) : (
-                            <span style={{ color: '#475569' }}>—</span>
-                          )}
+                    {filteredResults.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
+                          <p style={{ margin: '0 0 10px 0', fontSize: '0.75rem' }}>No job postings match the active filter criteria.</p>
+                          <button type="button" className="ghost-button" onClick={handleClearFilters}>
+                            Clear filters
+                          </button>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredResults.map((row) => (
+                        <tr key={row.id}>
+                          <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{row.id}</td>
+                          <td style={{ fontWeight: 600 }}>{row.payload.title || <em style={{ color: '#64748b' }}>No title</em>}</td>
+                          <td>{row.payload.company || <span style={{ color: '#64748b' }}>—</span>}</td>
+                          <td>
+                            {row.status === 'success' && (
+                              <span className={`batch-risk-pill ${row.risk_level.toLowerCase()}`}>
+                                {row.risk_level} RISK
+                              </span>
+                            )}
+                            {row.status === 'failed' && (
+                              <span className="batch-risk-pill failed">FAILED</span>
+                            )}
+                            {row.status === 'analyzing' && (
+                              <span style={{ color: '#7186ff', fontStyle: 'italic', fontSize: '0.62rem' }}>Analyzing…</span>
+                            )}
+                            {row.status === 'pending' && (
+                              <span style={{ color: '#64748b', fontSize: '0.62rem' }}>Queued</span>
+                            )}
+                          </td>
+                          <td style={{ fontFamily: 'DM Mono' }}>
+                            {row.status === 'success' && row.fraud_probability != null
+                              ? `${(row.fraud_probability * 100).toFixed(1)}%`
+                              : '—'}
+                          </td>
+                          <td style={{ fontFamily: 'DM Mono' }}>
+                            {row.status === 'success' && row.ai_generation_probability != null
+                              ? `${(row.ai_generation_probability * 100).toFixed(1)}%`
+                              : row.status === 'success'
+                                ? 'Not available'
+                                : '—'}
+                          </td>
+                          <td className="batch-table-indicators">
+                            {row.status === 'success' ? (
+                              (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').length > 0 ? (
+                                (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').join(' · ')
+                              ) : (
+                                <span style={{ color: '#64748b' }}>No strong fraud indicators</span>
+                              )
+                            ) : row.status === 'failed' ? (
+                              <span style={{ color: '#ff8e9c' }}>{row.error}</span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td>
+                            {row.status === 'success' ? (
+                              <button
+                                type="button"
+                                className="ghost-button batch-inspect-btn"
+                                title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                                onClick={() => onInspect(row)}
+                              >
+                                Inspect <span>→</span>
+                              </button>
+                            ) : (
+                              <span style={{ color: '#475569' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

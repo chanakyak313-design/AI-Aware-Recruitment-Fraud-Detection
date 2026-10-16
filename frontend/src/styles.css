@@ -41,7 +41,11 @@
 .history-status-select:focus-visible,
 .history-note-input:focus-visible,
 .history-editor-close-btn:focus-visible,
-.history-save-review-btn:focus-visible {
+.history-save-review-btn:focus-visible,
+.batch-insight-card:focus-visible,
+.batch-signal-btn:focus-visible,
+.batch-filter-pill:focus-visible,
+.batch-clear-filter-btn:focus-visible {
   outline: 2px solid #7186ff !important;
   outline-offset: 2px !important;
 }
@@ -213,25 +217,351 @@
   transition: width 0.25s ease;
 }
 
-/* Batch Summary Stats */
-.batch-summary-stats {
+/* Batch Insights Dashboard */
+.batch-insights-dashboard {
+  background: #090e18;
+  border: 1px solid #1a2a40;
+  border-radius: 9px;
+  padding: 20px;
+  margin: 22px 0 18px;
   display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.batch-insights-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 12px;
-  margin: 22px 0 16px;
 }
-.batch-stat-badge {
-  padding: 6px 12px;
-  border-radius: 6px;
+.batch-insights-head h3 {
+  margin: 5px 0 3px;
+  font-size: 1.05rem;
+  letter-spacing: -0.03em;
+}
+.batch-insights-head p {
+  margin: 0;
   font-size: 0.68rem;
+  color: #8fa1b8;
+  line-height: 1.45;
+}
+.batch-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.batch-insight-card {
+  background: #0c1422;
+  border: 1px solid #1c2c44;
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  font: inherit;
+}
+.batch-insight-card:hover {
+  background: #101b2d;
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+}
+.batch-insight-card.active {
+  border-color: #7186ff;
+  background: #131c30;
+  box-shadow: 0 0 0 2px rgba(113, 134, 255, 0.35);
+}
+.batch-insight-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.batch-insight-card.high .batch-insight-card-head { color: #ef8796; }
+.batch-insight-card.medium .batch-insight-card-head { color: #f2c66e; }
+.batch-insight-card.low .batch-insight-card-head { color: #6de0ad; }
+.batch-insight-card.failed .batch-insight-card-head { color: #ff8e9c; }
+
+.batch-insight-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  line-height: 1.1;
+  margin-top: 4px;
+}
+.batch-insight-pct {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem;
+  color: #8fa1b8;
+}
+.batch-insight-hint {
+  font-size: 0.58rem;
+  color: #64748b;
+  margin-top: 4px;
+}
+.batch-insight-card.active .batch-insight-hint {
+  color: #93c5fd;
   font-weight: 600;
-  background: #101724;
-  border: 1px solid #1e2c40;
+}
+
+/* Proportion Segmented Bar */
+.batch-proportion-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.batch-proportion-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.batch-proportion-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #141e2e;
+}
+.batch-proportion-seg {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.batch-proportion-seg.high { background: #ef7f8e; }
+.batch-proportion-seg.medium { background: #f2c66e; }
+.batch-proportion-seg.low { background: #6de0ad; }
+.batch-proportion-seg.failed { background: #ff8e9c; }
+
+/* 2-Column Insights Sub-Grid */
+.batch-subgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.batch-subcard {
+  background: #0c1422;
+  border: 1px solid #1c2c44;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.batch-subcard-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #8fa1b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Spectrum Bins */
+.batch-spectrum-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.batch-spectrum-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 35px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.64rem;
+}
+.batch-spectrum-label {
+  font-family: 'DM Mono', monospace;
   color: #94a3b8;
 }
-.batch-stat-badge b {
+.batch-spectrum-track {
+  height: 6px;
+  background: #162235;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.batch-spectrum-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.batch-spectrum-count {
+  font-family: 'DM Mono', monospace;
+  text-align: right;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+/* Recurring Signals */
+.batch-signals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.batch-signal-btn {
+  background: #080d16;
+  border: 1px solid #1a273b;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: all 0.2s ease;
+  font: inherit;
+}
+.batch-signal-btn:hover {
+  background: #0e1726;
+  border-color: #657bf2;
+}
+.batch-signal-btn.active {
+  border-color: #7186ff;
+  background: #121d33;
+  box-shadow: 0 0 0 1px #7186ff;
+}
+.batch-signal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.batch-signal-name {
+  font-size: 0.65rem;
   color: #e2e8f0;
-  margin-left: 4px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-signal-badge {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.58rem;
+  padding: 2px 6px;
+  background: #251822;
+  border: 1px solid #4a2738;
+  color: #fca5a5;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.batch-signal-track {
+  height: 3px;
+  background: #162235;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.batch-signal-fill {
+  height: 100%;
+  background: #e9a768;
+  border-radius: 2px;
+}
+.batch-signals-empty {
+  margin: 0;
+  font-size: 0.65rem;
+  color: #64748b;
+  font-style: italic;
+  padding: 10px 0;
+}
+
+/* AI-Text Style Summary Card */
+.batch-ai-summary-card {
+  background: #090e18;
+  border: 1px solid #1a2a40;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.batch-ai-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.batch-ai-summary-title {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #7186ff;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.batch-ai-metrics-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.batch-ai-metric-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+.batch-ai-metric-item strong {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+.batch-ai-disclaimer {
+  margin: 0;
+  font-size: 0.61rem;
+  color: #718096;
+  line-height: 1.4;
+}
+
+/* Filter Banner */
+.batch-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #111a2c;
+  border: 1px solid #25334d;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.batch-filter-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.68rem;
+  color: #cbd5e1;
+}
+.batch-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  background: #1c273e;
+  border: 1px solid #3b82f6;
+  color: #93c5fd;
+  cursor: pointer;
+  font: inherit;
+}
+.batch-filter-pill:hover {
+  background: #253452;
+  color: #ffffff;
+}
+.batch-clear-filter-btn {
+  font-size: 0.65rem;
+  padding: 4px 10px;
 }
 
 /* Table Container & Table */
@@ -1396,6 +1726,18 @@
   .batch-file-actions .primary-button,
   .batch-file-actions .ghost-button {
     flex: 1;
+  }
+  .batch-insights-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .batch-subgrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media(max-width:560px) {
+  .batch-insights-grid {
+    grid-template-columns: 1fr;
   }
 }
 
