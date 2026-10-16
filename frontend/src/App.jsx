@@ -2289,6 +2289,335 @@ function Analyzer({
 }
 
 
+const PUBLIC_EMAIL_PROVIDERS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'yahoo.co.uk',
+  'yahoo.co.in',
+  'ymail.com',
+  'rocketmail.com',
+  'hotmail.com',
+  'hotmail.co.uk',
+  'outlook.com',
+  'live.com',
+  'msn.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'aim.com',
+  'mail.com',
+  'zoho.com',
+  'proton.me',
+  'protonmail.com',
+  'gmx.com',
+  'gmx.net',
+  'yandex.com',
+  'yandex.ru',
+  'fastmail.com',
+  'tutanota.com',
+  'tuta.com',
+]);
+
+function parseNormalizedHostname(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string' || !urlStr.trim()) {
+    return { status: 'missing', hostname: null, raw: '' };
+  }
+  const raw = urlStr.trim();
+  let candidate = raw;
+  if (!/^https?:\/\//i.test(candidate)) {
+    candidate = `http://${candidate}`;
+  }
+  try {
+    const parsed = new URL(candidate);
+    let host = parsed.hostname ? parsed.hostname.toLowerCase() : '';
+    if (host.startsWith('www.')) host = host.slice(4);
+    if (!host || !host.includes('.') || host.startsWith('.') || host.endsWith('.') || /\s/.test(host)) {
+      return { status: 'invalid', hostname: null, raw };
+    }
+    return { status: 'valid', hostname: host, raw };
+  } catch {
+    return { status: 'invalid', hostname: null, raw };
+  }
+}
+
+function parseContactEmailDomain(emailStr) {
+  if (!emailStr || typeof emailStr !== 'string' || !emailStr.trim()) {
+    return { status: 'missing', domain: null, isPublic: false, raw: '' };
+  }
+  const raw = emailStr.trim();
+  const parts = raw.split('@');
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+    return { status: 'invalid', domain: null, isPublic: false, raw };
+  }
+  let domain = parts[1].trim().toLowerCase();
+  if (domain.startsWith('www.')) domain = domain.slice(4);
+  if (!domain.includes('.') || domain.startsWith('.') || domain.endsWith('.') || /\s/.test(domain)) {
+    return { status: 'invalid', domain: null, isPublic: false, raw };
+  }
+  return {
+    status: 'valid',
+    domain,
+    isPublic: PUBLIC_EMAIL_PROVIDERS.has(domain),
+    raw,
+  };
+}
+
+function compareIdentityPair(itemA, labelA, itemB, labelB) {
+  if (itemA.status === 'missing' || itemB.status === 'missing') {
+    return {
+      label: `${labelA} ↔ ${labelB}`,
+      status: 'missing',
+      badge: 'Not compared',
+      detail: `${itemA.status === 'missing' ? labelA : labelB} was not provided.`,
+    };
+  }
+  if (itemA.status === 'invalid' || itemB.status === 'invalid') {
+    return {
+      label: `${labelA} ↔ ${labelB}`,
+      status: 'invalid',
+      badge: 'Invalid format',
+      detail: `Cannot compare due to invalid ${itemA.status === 'invalid' ? labelA : labelB} input.`,
+    };
+  }
+  const valA = itemA.hostname || itemA.domain;
+  const valB = itemB.hostname || itemB.domain;
+
+  if (itemA.isPublic || itemB.isPublic) {
+    if (valA === valB) {
+      return {
+        label: `${labelA} ↔ ${labelB}`,
+        status: 'public',
+        badge: 'Public provider match',
+        detail: `Both reference the public email provider (${valA}).`,
+      };
+    }
+    const publicSrc = itemA.isPublic ? labelA : labelB;
+    const publicDom = itemA.isPublic ? valA : valB;
+    const otherSrc = itemA.isPublic ? labelB : labelA;
+    const otherDom = itemA.isPublic ? valB : valA;
+    return {
+      label: `${labelA} ↔ ${labelB}`,
+      status: 'public',
+      badge: 'Public provider / Different',
+      detail: `${publicSrc} uses public provider (${publicDom}) while ${otherSrc} references (${otherDom}).`,
+    };
+  }
+
+  if (valA === valB) {
+    return {
+      label: `${labelA} ↔ ${labelB}`,
+      status: 'match',
+      badge: 'Exact match',
+      detail: `Both reference the exact normalized domain (${valA}).`,
+    };
+  }
+
+  return {
+    label: `${labelA} ↔ ${labelB}`,
+    status: 'mismatch',
+    badge: 'Different domains',
+    detail: `${labelA} (${valA}) differs from ${labelB} (${valB}).`,
+  };
+}
+
+function EmployerIdentityCard({ form, result }) {
+  const websiteRaw = (form?.website || result?.payload?.website || '').trim();
+  const appUrlRaw = (form?.application_url || result?.payload?.application_url || '').trim();
+  const emailRaw = (form?.email || result?.payload?.email || '').trim();
+
+  const webItem = parseNormalizedHostname(websiteRaw);
+  const appItem = parseNormalizedHostname(appUrlRaw);
+  const emailItem = parseContactEmailDomain(emailRaw);
+
+  const sources = [
+    {
+      id: 'website',
+      name: 'Company Website',
+      description: 'Configured organization or corporate home page',
+      data: webItem,
+      domain: webItem.hostname,
+    },
+    {
+      id: 'app_url',
+      name: 'Application URL',
+      description: 'Direct job posting or applicant submission link',
+      data: appItem,
+      domain: appItem.hostname,
+    },
+    {
+      id: 'email',
+      name: 'Contact Email',
+      description: 'Recruiter or HR contact address domain',
+      data: emailItem,
+      domain: emailItem.domain,
+      isEmail: true,
+    },
+  ];
+
+  const validSources = sources.filter((s) => s.data.status === 'valid');
+  const hasInvalid = sources.some((s) => s.data.status === 'invalid');
+
+  // Pairwise comparisons
+  const pair1 = compareIdentityPair(webItem, 'Website', appItem, 'Application URL');
+  const pair2 = compareIdentityPair(webItem, 'Website', emailItem, 'Contact Email');
+  const pair3 = compareIdentityPair(appItem, 'Application URL', emailItem, 'Contact Email');
+  const pairs = [pair1, pair2, pair3];
+
+  // Overall card status
+  let overallStatus = 'incomplete';
+  let overallPill = 'Insufficient Data';
+  let overallSummary = 'At least two provided sources are required to compare domain consistency.';
+
+  if (hasInvalid) {
+    overallStatus = 'invalid';
+    overallPill = 'Invalid Format';
+    overallSummary = 'One or more identity fields contain an invalid URL or email address format.';
+  } else if (validSources.length === 0) {
+    overallStatus = 'incomplete';
+    overallPill = 'No Sources Provided';
+    overallSummary = 'No website, application URL, or contact email was provided for identity consistency analysis.';
+  } else if (validSources.length === 1) {
+    overallStatus = 'incomplete';
+    overallPill = 'Single Source';
+    overallSummary = `Only one source provided (${validSources[0].name}: ${validSources[0].domain}). At least two sources are required to evaluate domain consistency.`;
+  } else {
+    // 2 or 3 valid sources
+    const allDomainsSame = validSources.every(
+      (s) => s.domain === validSources[0].domain
+    );
+
+    if (allDomainsSame) {
+      if (emailItem.status === 'valid' && emailItem.isPublic) {
+        overallStatus = 'public';
+        overallPill = 'Public Provider Match';
+        overallSummary = `All provided sources match the same normalized domain, which is a public email provider (${emailItem.domain}).`;
+      } else {
+        overallStatus = 'match';
+        overallPill = 'All Domains Match';
+        overallSummary = `All ${validSources.length} provided identity fields reference the exact normalized domain (${validSources[0].domain}).`;
+      }
+    } else {
+      if (emailItem.status === 'valid' && emailItem.isPublic) {
+        overallStatus = 'public';
+        overallPill = 'Public Email / Different';
+        overallSummary = `Contact email uses public provider (${emailItem.domain}), which differs from organizational hostnames.`;
+      } else {
+        overallStatus = 'mismatch';
+        overallPill = 'Different Domains';
+        overallSummary = 'Provided identity fields reference different normalized domains (common with ATS platforms or recruitment agencies).';
+      }
+    }
+  }
+
+  // Row status logic
+  const getRowStatus = (source) => {
+    if (source.data.status === 'missing') {
+      return { status: 'missing', label: 'Not provided' };
+    }
+    if (source.data.status === 'invalid') {
+      return { status: 'invalid', label: 'Invalid format' };
+    }
+    if (source.isEmail && source.data.isPublic) {
+      return { status: 'public', label: 'Public provider' };
+    }
+    const otherValids = validSources.filter((s) => s.id !== source.id);
+    if (otherValids.length === 0) {
+      return { status: 'neutral', label: 'Single source' };
+    }
+    const matchesAll = otherValids.every((s) => s.domain === source.domain);
+    if (matchesAll) {
+      return { status: 'match', label: 'Consistent' };
+    }
+    const matchesAny = otherValids.some((s) => s.domain === source.domain);
+    if (matchesAny) {
+      return { status: 'match', label: 'Matches 1 source' };
+    }
+    return { status: 'mismatch', label: 'Different domain' };
+  };
+
+  return (
+    <section className="employer-identity-card" aria-label="Employer identity consistency check">
+      <div className="identity-head">
+        <div>
+          <span className="overline">EMPLOYER IDENTITY CHECK</span>
+          <h3>Domain &amp; Identity Consistency</h3>
+          <p>{overallSummary}</p>
+        </div>
+        <span className={`identity-status-pill ${overallStatus}`}>
+          {overallPill}
+        </span>
+      </div>
+
+      <div className="identity-table-container">
+        <table className="identity-table">
+          <thead>
+            <tr>
+              <th scope="col">Source Field</th>
+              <th scope="col">Normalized Domain / Hostname</th>
+              <th scope="col">Consistency Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sources.map((s) => {
+              const rowStatus = getRowStatus(s);
+              return (
+                <tr key={s.id}>
+                  <td>
+                    <strong>{s.name}</strong>
+                    <span className="identity-field-desc">{s.description}</span>
+                  </td>
+                  <td>
+                    {s.data.status === 'missing' ? (
+                      <span className="identity-missing-text">Not provided</span>
+                    ) : s.data.status === 'invalid' ? (
+                      <span className="identity-raw-invalid">
+                        &ldquo;{s.data.raw}&rdquo; (invalid format)
+                      </span>
+                    ) : (
+                      <div className="identity-email-val">
+                        <code className="identity-code">{s.domain}</code>
+                        {s.isEmail && s.data.isPublic && (
+                          <span className="identity-subtag public">Public Provider</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`identity-pill ${rowStatus.status}`}>
+                      {rowStatus.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="identity-pairwise-grid">
+        {pairs.map((pair, idx) => (
+          <div key={idx} className={`identity-pair-card ${pair.status}`}>
+            <span className="identity-pair-label">{pair.label}</span>
+            <div style={{ marginBottom: 4 }}>
+              <span className={`identity-pill ${pair.status}`}>{pair.badge}</span>
+            </div>
+            <p className="identity-pair-detail">{pair.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="identity-explainer-box">
+        <span style={{ fontSize: '1.05rem', lineHeight: 1 }}>ℹ</span>
+        <div>
+          <strong>Decision-support notice:</strong> A shared domain can be normal across company touchpoints, but an exact match does not prove a website is authentic or official. Conversely, different domains are common with legitimate recruiting agencies and applicant-tracking platforms (such as Greenhouse, Lever, or Workday). This check performs exact normalized hostname comparisons to assist human review and is not proof of fraud or legitimacy.
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Result({ result, form }) {
   const aiValue = result.ai_generation_probability;
 
@@ -2364,6 +2693,8 @@ function Result({ result, form }) {
         text={form?.description}
         fraudIndicators={result.fraud_indicators}
       />
+
+      <EmployerIdentityCard form={form} result={result} />
 
       {result.autopsy && <JobAutopsy autopsy={result.autopsy} />}
 
