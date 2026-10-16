@@ -1290,12 +1290,112 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
   );
 }
 
+function extractUrlHostname(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return '';
+  let raw = urlStr.trim().toLowerCase();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) {
+    raw = `http://${raw}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    let host = parsed.hostname.toLowerCase();
+    if (host.startsWith('www.')) host = host.slice(4);
+    return host;
+  } catch {
+    const clean = raw.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
+    return clean.startsWith('www.') ? clean.slice(4) : clean;
+  }
+}
+
+function findCrossPostingMatches(selectedJobs) {
+  if (!selectedJobs || selectedJobs.length < 2) return [];
+
+  const matches = [];
+
+  // 1. Company Name exact normalized match (trimmed, case-insensitive)
+  const companyMap = new Map();
+  selectedJobs.forEach((job, idx) => {
+    const raw = (job.payload?.company || job.company || '').trim();
+    if (!raw) return;
+    const norm = raw.toLowerCase();
+    if (!companyMap.has(norm)) {
+      companyMap.set(norm, { displayVal: raw, postings: [] });
+    }
+    companyMap.get(norm).postings.push({ idx: idx + 1, title: job.title || job.payload?.title || 'Untitled' });
+  });
+
+  companyMap.forEach((entry) => {
+    if (entry.postings.length >= 2) {
+      matches.push({
+        type: 'Company Name',
+        value: entry.displayVal,
+        postings: entry.postings,
+      });
+    }
+  });
+
+  // 2. Contact Email exact normalized match (trimmed, case-insensitive, complete email address)
+  const emailMap = new Map();
+  selectedJobs.forEach((job, idx) => {
+    const raw = (job.payload?.email || '').trim();
+    if (!raw) return;
+    const norm = raw.toLowerCase();
+    if (!emailMap.has(norm)) {
+      emailMap.set(norm, { displayVal: raw, postings: [] });
+    }
+    emailMap.get(norm).postings.push({ idx: idx + 1, title: job.title || job.payload?.title || 'Untitled' });
+  });
+
+  emailMap.forEach((entry) => {
+    if (entry.postings.length >= 2) {
+      matches.push({
+        type: 'Contact Email',
+        value: entry.displayVal,
+        postings: entry.postings,
+      });
+    }
+  });
+
+  // 3. Website or Application URL Hostname (trimmed, case-insensitive, normalized host)
+  const hostMap = new Map();
+  selectedJobs.forEach((job, idx) => {
+    const webHost = extractUrlHostname(job.payload?.website);
+    const appHost = extractUrlHostname(job.payload?.application_url);
+    const hostsForJob = new Set([webHost, appHost].filter(Boolean));
+
+    hostsForJob.forEach((h) => {
+      if (!hostMap.has(h)) {
+        hostMap.set(h, { displayVal: h, postings: [] });
+      }
+      hostMap.get(h).postings.push({ idx: idx + 1, title: job.title || job.payload?.title || 'Untitled' });
+    });
+  });
+
+  hostMap.forEach((entry) => {
+    if (entry.postings.length >= 2) {
+      matches.push({
+        type: 'Website / Application Hostname',
+        value: entry.displayVal,
+        postings: entry.postings,
+      });
+    }
+  });
+
+  return matches;
+}
+
 function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
   const [selectedIds, setSelectedIds] = useState([]);
 
   const selectedJobs = useMemo(
     () => (history || []).filter((item) => selectedIds.includes(item.id)),
     [history, selectedIds]
+  );
+
+  const crossPostingMatches = useMemo(
+    () => findCrossPostingMatches(selectedJobs),
+    [selectedJobs]
   );
 
   const handleToggleSelect = (id) => {
@@ -1401,6 +1501,53 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
                 >
                   Clear selection
                 </button>
+              </div>
+
+              <div className="cross-posting-panel" aria-label="Cross-posting pattern check">
+                <div className="cross-posting-header">
+                  <span className="overline">RELATIONSHIP ANALYSIS</span>
+                  <h4>Cross-Posting Pattern Check</h4>
+                </div>
+
+                <p className="cross-posting-notice">
+                  A shared detail can be normal for multiple openings from the same employer or agency. These matches show relationships for human review and are not proof of fraud.
+                </p>
+
+                {crossPostingMatches.length > 0 ? (
+                  <div className="cross-posting-matches">
+                    <span className="cross-posting-matches-title">
+                      Shared exact details detected ({crossPostingMatches.length}):
+                    </span>
+                    <ul className="cross-posting-matches-list">
+                      {crossPostingMatches.map((m, idx) => {
+                        const sharedDesc =
+                          m.postings.length === 2
+                            ? `Posting ${m.postings[0].idx} (“${m.postings[0].title}”) and Posting ${m.postings[1].idx} (“${m.postings[1].title}”)`
+                            : m.postings
+                                .map((p, i) =>
+                                  i === m.postings.length - 1
+                                    ? `and Posting ${p.idx} (“${p.title}”)`
+                                    : `Posting ${p.idx} (“${p.title}”)`
+                                )
+                                .join(', ');
+
+                        return (
+                          <li key={idx} className="cross-posting-match-item">
+                            <span className="cross-posting-type-badge">{m.type}</span>
+                            <strong className="cross-posting-value">{m.value}</strong>
+                            <span className="cross-posting-postings">
+                              — shared by {sharedDesc}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="cross-posting-empty">
+                    No shared details were found in the available fields.
+                  </p>
+                )}
               </div>
 
               <div className={`compare-grid compare-grid-${selectedJobs.length}`}>
