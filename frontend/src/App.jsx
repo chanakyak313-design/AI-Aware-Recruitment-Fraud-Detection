@@ -280,6 +280,216 @@ function SignalList({ title, items, kind }) {
   );
 }
 
+/*
+ * Deterministic trigger phrases extracted directly from backend data_pipeline.py
+ * and model_service.py rules. Used strictly for rule-based text evidence annotation.
+ */
+const FRAUD_PHRASE_DICTIONARY = {
+  'Application or registration fee mentioned': [
+    'application fee',
+    'registration fee',
+    'pay fee',
+    'pay upfront',
+    'processing fee',
+  ],
+  'Request for sensitive or personal information': [
+    'bank details',
+    'password',
+    'ssn',
+    'cvv',
+    'routing number',
+    'personal id',
+  ],
+  'Urgency language detected': [
+    'urgent',
+    'immediately',
+    'hiring now',
+    'limited seats',
+    'fast interview',
+  ],
+  'Suspicious off-platform contact requested': [
+    'whatsapp',
+    'telegram',
+    'signal',
+    'text me',
+    'dm me',
+    'pay on',
+  ],
+  'Contact requests moved off the official platform': [
+    'whatsapp',
+    'telegram',
+    'signal',
+    'chat on whatsapp',
+  ],
+};
+
+function TextEvidencePanel({ text, fraudIndicators }) {
+  const activeIndicators = useMemo(() => {
+    return (fraudIndicators || []).filter(
+      (ind) => ind !== 'No strong fraud indicators were detected'
+    );
+  }, [fraudIndicators]);
+
+  const { segments, matchedPhrases, unmatchedIndicators } = useMemo(() => {
+    const rawText = String(text || '');
+    if (!rawText.trim() || !activeIndicators.length) {
+      return {
+        segments: [{ text: rawText, isMatch: false }],
+        matchedPhrases: [],
+        unmatchedIndicators: activeIndicators,
+      };
+    }
+
+    // Collect all candidate phrases for indicators that actually fired
+    const phraseMap = new Map();
+    activeIndicators.forEach((indicator) => {
+      const phrases = FRAUD_PHRASE_DICTIONARY[indicator] || [];
+      phrases.forEach((phrase) => {
+        if (!phraseMap.has(phrase.toLowerCase())) {
+          phraseMap.set(phrase.toLowerCase(), indicator);
+        }
+      });
+    });
+
+    const candidatePhrases = Array.from(phraseMap.keys()).sort(
+      (a, b) => b.length - a.length
+    );
+
+    if (!candidatePhrases.length) {
+      return {
+        segments: [{ text: rawText, isMatch: false }],
+        matchedPhrases: [],
+        unmatchedIndicators: activeIndicators,
+      };
+    }
+
+    // Build regex with literal phrase matching and boundary awareness
+    const escaped = candidatePhrases.map((p) =>
+      p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    );
+    const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+
+    const segs = [];
+    let lastIndex = 0;
+    const matchesFound = new Set();
+    const matchedIndicatorSet = new Set();
+
+    let match;
+    while ((match = regex.exec(rawText)) !== null) {
+      const start = match.index;
+      const end = regex.lastIndex;
+      const matchedStr = match[0];
+      const matchedLower = matchedStr.toLowerCase();
+      const indicator = phraseMap.get(matchedLower);
+
+      if (start > lastIndex) {
+        segs.push({
+          text: rawText.slice(lastIndex, start),
+          isMatch: false,
+        });
+      }
+
+      segs.push({
+        text: matchedStr,
+        isMatch: true,
+        indicator,
+      });
+
+      matchesFound.add(matchedStr);
+      if (indicator) matchedIndicatorSet.add(indicator);
+      lastIndex = end;
+    }
+
+    if (lastIndex < rawText.length) {
+      segs.push({
+        text: rawText.slice(lastIndex),
+        isMatch: false,
+      });
+    }
+
+    const unmatched = activeIndicators.filter(
+      (ind) => !matchedIndicatorSet.has(ind)
+    );
+
+    return {
+      segments: segs,
+      matchedPhrases: Array.from(matchesFound),
+      unmatchedIndicators: unmatched,
+    };
+  }, [text, activeIndicators]);
+
+  const hasDescription = Boolean(String(text || '').trim());
+
+  return (
+    <section className="surface evidence-text-card">
+      <div className="card-heading">
+        <span className="heading-icon">¶</span>
+        <div>
+          <span className="overline">RULE-BASED TEXT EVIDENCE</span>
+          <h3>Job description phrase matches</h3>
+          <p>
+            Deterministic matches based strictly on keyword triggers from the
+            fired fraud rules. Distinct from SHAP feature contributions.
+          </p>
+        </div>
+      </div>
+
+      <div className="evidence-text-body">
+        {!hasDescription ? (
+          <p className="muted">No job description text provided to evaluate.</p>
+        ) : (
+          <div className="evidence-text-content" tabIndex="0" role="region" aria-label="Highlighted job description">
+            {segments.map((seg, idx) =>
+              seg.isMatch ? (
+                <mark
+                  key={idx}
+                  className="evidence-phrase-highlight"
+                  title={`Matched rule: ${seg.indicator}`}
+                >
+                  {seg.text}
+                </mark>
+              ) : (
+                <span key={idx}>{seg.text}</span>
+              )
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="evidence-text-footer">
+        {matchedPhrases.length > 0 ? (
+          <div className="evidence-matched-summary">
+            <strong>Matched in description:</strong>{' '}
+            {matchedPhrases.map((phrase, i) => (
+              <span key={i} className="evidence-tag">
+                "{phrase}"
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="evidence-matched-summary muted">
+            No exact indicator phrases were detected in the description.
+          </div>
+        )}
+
+        {unmatchedIndicators.length > 0 && (
+          <div className="evidence-unmatched-note">
+            <small>
+              <em>Field/metadata signals without matching description phrases:</em>{' '}
+              {unmatchedIndicators.join(' · ')}
+            </small>
+          </div>
+        )}
+
+        <p className="fine-print">
+          Rule-based highlights denote deterministic keyword detections only.
+          They do not represent statistical SHAP attributions or model feature weights.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function ShapPanel({ shap }) {
   if (!shap?.available) {
     return (
@@ -591,7 +801,7 @@ function Analyzer({
             ))}
           </div>
         ) : result ? (
-          <Result result={result} />
+          <Result result={result} form={form} />
         ) : (
           <div className="empty-state">
             <div className="shield-mark">◈</div>
@@ -613,7 +823,7 @@ function Analyzer({
   );
 }
 
-function Result({ result }) {
+function Result({ result, form }) {
   const aiValue = result.ai_generation_probability;
 
   const aiStatus =
@@ -683,6 +893,11 @@ function Result({ result }) {
           kind="ai"
         />
       </div>
+
+      <TextEvidencePanel
+        text={form?.description}
+        fraudIndicators={result.fraud_indicators}
+      />
 
       {result.autopsy && <JobAutopsy autopsy={result.autopsy} />}
 
