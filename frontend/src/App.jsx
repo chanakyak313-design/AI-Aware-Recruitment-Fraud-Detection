@@ -1291,6 +1291,34 @@ function BatchScreening({ onInspect, onSaveHistoryItem, API_BASE_URL, setApiAvai
 }
 
 function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  const selectedJobs = useMemo(
+    () => (history || []).filter((item) => selectedIds.includes(item.id)),
+    [history, selectedIds]
+  );
+
+  const handleToggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      }
+      if (prev.length >= 3) {
+        return prev;
+      }
+      return [...prev, id];
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  const handleClearAllHistory = () => {
+    setSelectedIds([]);
+    onClearHistory();
+  };
+
   return (
     <section className="surface history-card">
       <div className="section-head history-head">
@@ -1305,7 +1333,7 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
           <button
             type="button"
             className="ghost-button history-clear-btn"
-            onClick={onClearHistory}
+            onClick={handleClearAllHistory}
             title="Clear all saved screening history from this session"
           >
             Clear History
@@ -1338,53 +1366,183 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError }) {
           </p>
         </div>
       ) : (
-        <div className="history-table-container" tabIndex={0} aria-label="Recent screening history table">
-          <table className="history-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Job Title</th>
-                <th>Company</th>
-                <th>Date / Time</th>
-                <th>Risk Level</th>
-                <th>Type</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((item, idx) => (
-                <tr key={item.id || idx}>
-                  <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{idx + 1}</td>
-                  <td style={{ fontWeight: 600 }}>{item.title}</td>
-                  <td>{item.company}</td>
-                  <td style={{ fontFamily: 'DM Mono', fontSize: '0.68rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                    {item.dateTime}
-                  </td>
-                  <td>
-                    <span className={`batch-risk-pill ${(item.risk_level || 'unknown').toLowerCase()}`}>
-                      {item.risk_level || 'UNKNOWN'} RISK
-                    </span>
-                  </td>
-                  <td>
-                    <span className="history-source-badge">
-                      {item.source === 'batch' ? 'Batch' : 'Single'}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="ghost-button history-inspect-btn"
-                      title="Inspect this posting in the single-job analysis view with full autopsy and print report"
-                      onClick={() => onInspect(item)}
-                    >
-                      Inspect <span>→</span>
-                    </button>
-                  </td>
+        <>
+          <div className="history-compare-bar">
+            <div className="history-compare-info">
+              <strong>Side-by-side comparison:</strong>{' '}
+              {selectedIds.length === 0 && 'Select 2 or 3 postings from the table to compare them side by side.'}
+              {selectedIds.length === 1 && '1 posting selected (select at least 1 more to compare, up to 3).'}
+              {selectedIds.length === 2 && '2 postings selected for comparison (you can select 1 more).'}
+              {selectedIds.length === 3 && '3 postings selected (maximum reached). Further selections disabled.'}
+            </div>
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                className="ghost-button history-clear-selection-btn"
+                onClick={handleClearSelection}
+                title="Deselect all jobs currently marked for comparison"
+              >
+                Clear selection ({selectedIds.length})
+              </button>
+            )}
+          </div>
+
+          {selectedJobs.length >= 2 && (
+            <div className="history-comparison-area" aria-label="Side-by-side job postings comparison">
+              <div className="history-comparison-header">
+                <div>
+                  <span className="overline">COMPARISON VIEW</span>
+                  <h3>Comparing {selectedJobs.length} selected job postings</h3>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button history-clear-selection-btn"
+                  onClick={handleClearSelection}
+                >
+                  Clear selection
+                </button>
+              </div>
+
+              <div className={`compare-grid compare-grid-${selectedJobs.length}`}>
+                {selectedJobs.map((job) => {
+                  const activeIndicators = (job.result?.fraud_indicators || job.fraud_indicators || [])
+                    .filter((ind) => ind && ind !== 'No strong fraud indicators were detected');
+
+                  const aiValue = job.ai_generation_probability ?? job.result?.ai_generation_probability;
+                  const formattedAiScore =
+                    aiValue != null && !isNaN(Number(aiValue))
+                      ? `${(Number(aiValue) * 100).toFixed(1)}%`
+                      : 'Not available';
+
+                  return (
+                    <div className="compare-card" key={job.id}>
+                      <div className="compare-card-head">
+                        <span className="compare-card-date">{job.dateTime}</span>
+                        <h4 className="compare-card-title">{job.title || 'Untitled posting'}</h4>
+                        <span className="compare-card-company">{job.company || '—'}</span>
+                      </div>
+
+                      <div className="compare-fraud-section">
+                        <span className="compare-section-label">FRAUD RISK ASSESSMENT</span>
+                        <div className="compare-fraud-metrics">
+                          <span className={`batch-risk-pill ${(job.risk_level || 'unknown').toLowerCase()}`}>
+                            {job.risk_level || 'UNKNOWN'} RISK
+                          </span>
+                          <div className="compare-prob-box">
+                            <span className="compare-prob-label">Fraud probability</span>
+                            <strong className="compare-prob-value">
+                              {job.fraud_probability != null
+                                ? `${(Number(job.fraud_probability) * 100).toFixed(1)}%`
+                                : '—'}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="compare-indicators-box">
+                          <span className="compare-indicators-title">Triggered fraud indicators:</span>
+                          {activeIndicators.length > 0 ? (
+                            <ul className="compare-indicators-list">
+                              {activeIndicators.map((ind, i) => (
+                                <li key={i}>{ind}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="compare-no-indicators">No strong fraud indicators detected</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="compare-ai-section">
+                        <span className="compare-section-label">AI-TEXT ESTIMATE</span>
+                        <div className="compare-ai-score-box">
+                          <strong className="compare-ai-value">{formattedAiScore}</strong>
+                        </div>
+                        <p className="compare-ai-explanation">
+                          Writing style is analyzed independently from fraud risk. An AI-text estimate does not prove AI authorship or fraudulent intent.
+                        </p>
+                      </div>
+
+                      <div className="compare-card-actions">
+                        <button
+                          type="button"
+                          className="ghost-button compare-inspect-btn"
+                          title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                          onClick={() => onInspect(job)}
+                        >
+                          Inspect job <span>→</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="history-table-container" tabIndex={0} aria-label="Recent screening history table">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>Select</th>
+                  <th>#</th>
+                  <th>Job Title</th>
+                  <th>Company</th>
+                  <th>Date / Time</th>
+                  <th>Risk Level</th>
+                  <th>Type</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {history.map((item, idx) => (
+                  <tr key={item.id || idx}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        className="history-checkbox"
+                        checked={selectedIds.includes(item.id)}
+                        disabled={!selectedIds.includes(item.id) && selectedIds.length >= 3}
+                        onChange={() => handleToggleSelect(item.id)}
+                        aria-label={`Select ${item.title || 'posting'} for comparison`}
+                        title={
+                          !selectedIds.includes(item.id) && selectedIds.length >= 3
+                            ? 'Maximum 3 postings can be selected for comparison'
+                            : 'Select to compare'
+                        }
+                      />
+                    </td>
+                    <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{idx + 1}</td>
+                    <td style={{ fontWeight: 600 }}>{item.title}</td>
+                    <td>{item.company}</td>
+                    <td style={{ fontFamily: 'DM Mono', fontSize: '0.68rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {item.dateTime}
+                    </td>
+                    <td>
+                      <span className={`batch-risk-pill ${(item.risk_level || 'unknown').toLowerCase()}`}>
+                        {item.risk_level || 'UNKNOWN'} RISK
+                      </span>
+                    </td>
+                    <td>
+                      <span className="history-source-badge">
+                        {item.source === 'batch' ? 'Batch' : 'Single'}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ghost-button history-inspect-btn"
+                        title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                        onClick={() => onInspect(item)}
+                      >
+                        Inspect <span>→</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
