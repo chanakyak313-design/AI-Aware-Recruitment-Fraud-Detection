@@ -7,6 +7,17 @@
 .print-report-btn:hover{background:#1c273a;border-color:#657bf2;color:#ffffff}
 .print-report-container{display:none}
 
+.evidence-text-card{margin-top:14px;padding:18px;border-radius:8px;border:1px solid #1f2c3d;background:#0c131e}
+.evidence-text-card .heading-icon{color:#e6a15c;background:#2d2118;font-weight:700}
+.evidence-text-body{margin-top:14px}
+.evidence-text-content{padding:12px 14px;background:#080d14;border:1px solid #1a2536;border-radius:6px;color:#cbd5e1;font-size:.73rem;line-height:1.65;white-space:pre-wrap;max-height:220px;overflow-y:auto}
+.evidence-phrase-highlight{background:rgba(239,127,142,0.22);color:#ff9eab;border-bottom:1.5px solid #ef7f8e;padding:1px 3px;border-radius:3px;font-weight:600}
+.evidence-text-footer{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.evidence-matched-summary{font-size:.68rem;color:#94a3b8}
+.evidence-matched-summary strong{color:#e2e8f0}
+.evidence-tag{display:inline-block;padding:2px 7px;background:#261822;border:1px solid #4a2738;color:#fca5a5;border-radius:4px;font-size:.62rem;font-family:'DM Mono',monospace;margin:2px 4px 2px 0}
+.evidence-unmatched-note{color:#718096;font-size:.63rem;line-height:1.4}
+
 @media print {
   @page {
     margin: 12mm 10mm;
