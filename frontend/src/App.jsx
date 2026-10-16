@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './styles.css';
 import './autopsy.css';
 import './autopsy-interactions.css';
@@ -581,10 +581,629 @@ function ShapPanel({ shap }) {
   );
 }
 
+/*
+ * ============================================================
+ * CSV BATCH SCREENING UTILITIES & COMPONENT
+ * ============================================================
+ */
+const CSV_COLUMN_ALIASES = {
+  title: ['title', 'job_title', 'jobtitle', 'job_name', 'role', 'position', 'job', 'headline'],
+  company: ['company', 'company_name', 'companyname', 'organization', 'employer', 'hiring_organization'],
+  description: ['description', 'job_description', 'jobdescription', 'job_details', 'details', 'summary', 'body'],
+  salary: ['salary', 'salary_range', 'compensation', 'pay', 'pay_rate', 'wage', 'remuneration'],
+  location: ['location', 'job_location', 'city', 'country', 'location_name', 'workplace'],
+  employment_type: ['employment_type', 'employmenttype', 'job_type', 'type', 'schedule'],
+  experience: ['experience', 'experience_level', 'seniority', 'level'],
+  website: ['website', 'company_website', 'company_url', 'url'],
+  application_url: ['application_url', 'applicationurl', 'apply_url', 'apply_link', 'application_link', 'link'],
+  email: ['email', 'contact_email', 'contact'],
+  requirements: ['requirements', 'job_requirements', 'qualifications', 'skills'],
+  benefits: ['benefits', 'job_benefits', 'perks'],
+};
+
+function normalizeHeader(h) {
+  return String(h || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function parseCSV(text) {
+  if (!text || typeof text !== 'string') return [];
+  let str = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const rows = [];
+  let currentRow = [];
+  let currentField = '';
+  let inQuotes = false;
+  let i = 0;
+  const len = str.length;
+
+  while (i < len) {
+    const char = str[i];
+    if (char === '"') {
+      if (inQuotes) {
+        if (i + 1 < len && str[i + 1] === '"') {
+          currentField += '"';
+          i += 2;
+          continue;
+        } else {
+          inQuotes = false;
+          i++;
+          continue;
+        }
+      } else {
+        inQuotes = true;
+        i++;
+        continue;
+      }
+    }
+
+    if (!inQuotes) {
+      if (char === ',') {
+        currentRow.push(currentField);
+        currentField = '';
+        i++;
+        continue;
+      }
+      if (char === '\r' || char === '\n') {
+        if (char === '\r' && i + 1 < len && str[i + 1] === '\n') {
+          i++;
+        }
+        currentRow.push(currentField);
+        currentField = '';
+        if (currentRow.some((f) => f.trim().length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        i++;
+        continue;
+      }
+    }
+
+    currentField += char;
+    i++;
+  }
+
+  if (inQuotes) {
+    throw new Error('Malformed CSV: Unclosed quotation mark detected.');
+  }
+
+  currentRow.push(currentField);
+  if (currentRow.some((f) => f.trim().length > 0)) {
+    rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+function mapCSVToJobs(csvText) {
+  const rows = parseCSV(csvText);
+  if (rows.length < 2) {
+    throw new Error('The uploaded CSV contains no job postings to analyze.');
+  }
+
+  const rawHeaders = rows[0];
+  const headerMap = {};
+
+  rawHeaders.forEach((h, colIdx) => {
+    const norm = normalizeHeader(h);
+    let matchedKey = null;
+    for (const [key, aliases] of Object.entries(CSV_COLUMN_ALIASES)) {
+      if (norm === key || aliases.includes(norm)) {
+        matchedKey = key;
+        break;
+      }
+    }
+    if (matchedKey && headerMap[matchedKey] === undefined) {
+      headerMap[matchedKey] = colIdx;
+    }
+  });
+
+  if (headerMap.title === undefined && headerMap.description === undefined) {
+    throw new Error(
+      `Could not map required information from the CSV. The file must contain recognizable headers for at least job title (e.g. "title", "job title") or job description (e.g. "description", "job description"). Found headers: ${rawHeaders.join(', ')}`
+    );
+  }
+
+  const dataRows = rows.slice(1);
+  if (dataRows.length > 25) {
+    throw new Error(
+      `Upload rejected: The file contains ${dataRows.length} job postings, which exceeds the limit of 25 postings per batch. Please upload a CSV containing 25 or fewer postings.`
+    );
+  }
+
+  const mappedJobs = dataRows.map((row, idx) => {
+    const job = {
+      title: '',
+      company: '',
+      location: '',
+      salary: '',
+      employment_type: '',
+      experience: '',
+      website: '',
+      application_url: '',
+      email: '',
+      description: '',
+      requirements: '',
+      benefits: '',
+    };
+
+    for (const [key, colIdx] of Object.entries(headerMap)) {
+      if (colIdx < row.length) {
+        job[key] = (row[colIdx] || '').trim();
+      }
+    }
+
+    return {
+      id: idx + 1,
+      payload: job,
+    };
+  });
+
+  return {
+    headers: rawHeaders,
+    mappedKeys: Object.keys(headerMap),
+    jobs: mappedJobs,
+  };
+}
+
+function exportBatchResultsToCSV(results, fileName) {
+  const headers = [
+    'Row',
+    'Job Title',
+    'Company',
+    'Location',
+    'Salary',
+    'Fraud Risk Level',
+    'Fraud Probability',
+    'AI-Text Estimate',
+    'Key Indicators',
+    'Status',
+    'Error Details',
+  ];
+
+  const escapeVal = (val) => {
+    const str = String(val == null ? '' : val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const lines = [headers.map(escapeVal).join(',')];
+
+  results.forEach((r) => {
+    const line = [
+      r.id,
+      r.payload.title || '',
+      r.payload.company || '',
+      r.payload.location || '',
+      r.payload.salary || '',
+      r.status === 'success' ? r.risk_level : r.status === 'failed' ? 'FAILED' : r.status.toUpperCase(),
+      r.status === 'success' && r.fraud_probability != null
+        ? `${(r.fraud_probability * 100).toFixed(1)}%`
+        : 'N/A',
+      r.status === 'success' && r.ai_generation_probability != null
+        ? `${(r.ai_generation_probability * 100).toFixed(1)}%`
+        : 'Not available',
+      r.status === 'success'
+        ? (r.fraud_indicators || [])
+            .filter((ind) => ind !== 'No strong fraud indicators were detected')
+            .join('; ')
+        : '',
+      r.status,
+      r.error || '',
+    ];
+    lines.push(line.map(escapeVal).join(','));
+  });
+
+  const csvString = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const cleanName = (fileName || 'batch_postings').replace(/\.csv$/i, '');
+  link.setAttribute('download', `${cleanName}_screening_results.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function BatchScreening({ onInspect, API_BASE_URL, setApiAvailable }) {
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [parsedJobs, setParsedJobs] = useState([]);
+  const [mappedKeys, setMappedKeys] = useState([]);
+  const [parseError, setParseError] = useState(null);
+  const [status, setStatus] = useState('idle'); // 'idle' | 'ready' | 'processing' | 'completed' | 'cancelled'
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [results, setResults] = useState([]);
+  const abortControllerRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const resetState = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setFile(null);
+    setFileName('');
+    setParsedJobs([]);
+    setMappedKeys([]);
+    setParseError(null);
+    setStatus('idle');
+    setCurrentIndex(0);
+    setResults([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    resetState();
+    setFileName(selectedFile.name);
+    setFile(selectedFile);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result;
+        const { mappedKeys: keys, jobs } = mapCSVToJobs(text);
+        setMappedKeys(keys);
+        setParsedJobs(jobs);
+        setStatus('ready');
+      } catch (err) {
+        setParseError(err.message || 'Failed to parse CSV file.');
+        setStatus('idle');
+      }
+    };
+    reader.onerror = () => {
+      setParseError('Failed to read the selected file from disk.');
+      setStatus('idle');
+    };
+    reader.readAsText(selectedFile);
+  };
+
+  const handleStartScreening = async () => {
+    if (parsedJobs.length === 0) return;
+
+    setStatus('processing');
+    setCurrentIndex(0);
+    const initialResults = parsedJobs.map((j) => ({
+      id: j.id,
+      payload: j.payload,
+      status: 'pending',
+      fraud_probability: null,
+      risk_level: null,
+      ai_generation_probability: null,
+      fraud_indicators: [],
+      rawResult: null,
+      error: null,
+    }));
+    setResults(initialResults);
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const updatedResults = [...initialResults];
+
+    for (let i = 0; i < parsedJobs.length; i++) {
+      if (abortController.signal.aborted) {
+        setStatus('cancelled');
+        break;
+      }
+
+      setCurrentIndex(i + 1);
+      const jobItem = parsedJobs[i];
+      updatedResults[i] = { ...updatedResults[i], status: 'analyzing' };
+      setResults([...updatedResults]);
+
+      try {
+        const payload = jobItem.payload;
+        if (!payload.title.trim() && !payload.description.trim()) {
+          throw new Error('Posting is missing both title and description.');
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...payload,
+            comparison_sources: [],
+          }),
+          signal: abortController.signal,
+        });
+
+        let body = null;
+        try {
+          body = await response.json();
+        } catch {
+          throw new Error(`Server returned HTTP ${response.status} with an invalid response.`);
+        }
+
+        if (!response.ok) {
+          const detail =
+            typeof body?.detail === 'string'
+              ? body.detail
+              : Array.isArray(body?.detail)
+                ? body.detail.map((item) => item?.msg || JSON.stringify(item)).join(', ')
+                : null;
+          throw new Error(detail || `Analysis failed (HTTP ${response.status}).`);
+        }
+
+        if (setApiAvailable) setApiAvailable(true);
+
+        updatedResults[i] = {
+          ...updatedResults[i],
+          status: 'success',
+          fraud_probability: body.fraud_probability,
+          risk_level: body.risk_level,
+          ai_generation_probability: body.ai_generation_probability,
+          fraud_indicators: body.fraud_indicators || [],
+          rawResult: body,
+          error: null,
+        };
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          updatedResults[i] = {
+            ...updatedResults[i],
+            status: 'pending',
+          };
+          setStatus('cancelled');
+          setResults([...updatedResults]);
+          break;
+        }
+
+        updatedResults[i] = {
+          ...updatedResults[i],
+          status: 'failed',
+          error: err.message || 'Analysis failed.',
+        };
+      }
+
+      setResults([...updatedResults]);
+    }
+
+    if (!abortController.signal.aborted) {
+      setStatus('completed');
+    }
+  };
+
+  const handleCancelScreening = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setStatus('cancelled');
+  };
+
+  const handleExport = () => {
+    exportBatchResultsToCSV(results, fileName);
+  };
+
+  const completedCount = results.filter((r) => r.status === 'success' || r.status === 'failed').length;
+  const progressPercent = parsedJobs.length > 0 ? Math.round((completedCount / parsedJobs.length) * 100) : 0;
+  const highRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'HIGH').length;
+  const medRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'MEDIUM').length;
+  const lowRiskCount = results.filter((r) => r.status === 'success' && r.risk_level === 'LOW').length;
+  const failedCount = results.filter((r) => r.status === 'failed').length;
+
+  return (
+    <section className="surface batch-card">
+      <div className="section-head">
+        <div>
+          <span className="overline">BATCH SCREENING</span>
+          <h2>Screen multiple job postings (CSV)</h2>
+          <p>
+            Upload a spreadsheet of postings to screen risk levels and writing signals in a single batch.
+          </p>
+        </div>
+      </div>
+
+      <div className="batch-privacy-note" role="note">
+        <Icon>ℹ</Icon>
+        <div>
+          <strong>Privacy notice:</strong> The CSV is read in your browser and is not stored by the app. Each job posting is sent to the configured analysis server, as it is for individual analysis.
+        </div>
+      </div>
+
+      {status === 'idle' && (
+        <>
+          <label className="batch-dropzone" tabIndex="0" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}>
+            <span className="batch-dropzone-icon">⇪</span>
+            <h4>Select a CSV file to screen</h4>
+            <p>
+              Upload up to 25 postings. Recognizes headers such as title/job title, company, description, salary, location, and requirements.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleFileChange}
+            />
+          </label>
+
+          {parseError && (
+            <p className="error-text" role="alert" style={{ marginTop: '16px' }}>
+              <Icon>!</Icon>
+              {parseError}
+            </p>
+          )}
+        </>
+      )}
+
+      {status === 'ready' && (
+        <div className="batch-file-info">
+          <div className="batch-file-details">
+            <strong>{fileName}</strong>
+            <small>{parsedJobs.length} posting{parsedJobs.length !== 1 ? 's' : ''} detected · ready for screening (max limit: 25)</small>
+            <div className="batch-mapped-tags">
+              <span style={{ fontSize: '0.62rem', color: '#718096', alignSelf: 'center', marginRight: '4px' }}>Mapped columns:</span>
+              {mappedKeys.map((key) => (
+                <span key={key} className="batch-mapped-tag">{key}</span>
+              ))}
+            </div>
+          </div>
+          <div className="batch-file-actions">
+            <button type="button" className="ghost-button" onClick={resetState}>
+              Choose another file
+            </button>
+            <button type="button" className="primary-button" onClick={handleStartScreening}>
+              Start batch screening ({parsedJobs.length}) <span>→</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(status === 'processing' || status === 'completed' || status === 'cancelled') && (
+        <>
+          {status === 'processing' && (
+            <div className="batch-progress-box">
+              <div className="batch-progress-header">
+                <span>
+                  <strong>Screening in progress:</strong> Posting {currentIndex} of {parsedJobs.length} ({progressPercent}%)
+                </span>
+                <button type="button" className="ghost-button" onClick={handleCancelScreening} style={{ padding: '4px 10px', fontSize: '0.65rem' }}>
+                  Cancel screening
+                </button>
+              </div>
+              <div className="batch-progress-bar">
+                <div className="batch-progress-fill" style={{ width: `${progressPercent}%` }} />
+              </div>
+            </div>
+          )}
+
+          {status === 'cancelled' && (
+            <p className="result-note" style={{ borderLeftColor: '#f2c66e', color: '#fcd34d' }}>
+              Screening was cancelled by user. Showing results for postings completed before cancellation ({completedCount} of {parsedJobs.length}).
+            </p>
+          )}
+
+          {results.length > 0 && (
+            <>
+              <div className="batch-summary-stats">
+                <span className="batch-stat-badge">Screened: <b>{completedCount} / {parsedJobs.length}</b></span>
+                <span className="batch-stat-badge" style={{ borderColor: '#5a2632' }}>High risk: <b style={{ color: '#ef8796' }}>{highRiskCount}</b></span>
+                <span className="batch-stat-badge" style={{ borderColor: '#544120' }}>Medium risk: <b style={{ color: '#f2c66e' }}>{medRiskCount}</b></span>
+                <span className="batch-stat-badge" style={{ borderColor: '#204d37' }}>Low risk: <b style={{ color: '#6de0ad' }}>{lowRiskCount}</b></span>
+                {failedCount > 0 && (
+                  <span className="batch-stat-badge" style={{ borderColor: '#481f28' }}>Failed: <b style={{ color: '#ff8e9c' }}>{failedCount}</b></span>
+                )}
+              </div>
+
+              <div className="batch-table-container">
+                <table className="batch-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Job Title</th>
+                      <th>Company</th>
+                      <th>Fraud Risk</th>
+                      <th>Fraud Prob.</th>
+                      <th>AI-Text Estimate</th>
+                      <th>Key Indicators</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((row) => (
+                      <tr key={row.id}>
+                        <td style={{ fontFamily: 'DM Mono', color: '#64748b' }}>{row.id}</td>
+                        <td style={{ fontWeight: 600 }}>{row.payload.title || <em style={{ color: '#64748b' }}>No title</em>}</td>
+                        <td>{row.payload.company || <span style={{ color: '#64748b' }}>—</span>}</td>
+                        <td>
+                          {row.status === 'success' && (
+                            <span className={`batch-risk-pill ${row.risk_level.toLowerCase()}`}>
+                              {row.risk_level} RISK
+                            </span>
+                          )}
+                          {row.status === 'failed' && (
+                            <span className="batch-risk-pill failed">FAILED</span>
+                          )}
+                          {row.status === 'analyzing' && (
+                            <span style={{ color: '#7186ff', fontStyle: 'italic', fontSize: '0.62rem' }}>Analyzing…</span>
+                          )}
+                          {row.status === 'pending' && (
+                            <span style={{ color: '#64748b', fontSize: '0.62rem' }}>Queued</span>
+                          )}
+                        </td>
+                        <td style={{ fontFamily: 'DM Mono' }}>
+                          {row.status === 'success' && row.fraud_probability != null
+                            ? `${(row.fraud_probability * 100).toFixed(1)}%`
+                            : '—'}
+                        </td>
+                        <td style={{ fontFamily: 'DM Mono' }}>
+                          {row.status === 'success' && row.ai_generation_probability != null
+                            ? `${(row.ai_generation_probability * 100).toFixed(1)}%`
+                            : row.status === 'success'
+                              ? 'Not available'
+                              : '—'}
+                        </td>
+                        <td className="batch-table-indicators">
+                          {row.status === 'success' ? (
+                            (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').length > 0 ? (
+                              (row.fraud_indicators || []).filter((ind) => ind !== 'No strong fraud indicators were detected').join(' · ')
+                            ) : (
+                              <span style={{ color: '#64748b' }}>No strong fraud indicators</span>
+                            )
+                          ) : row.status === 'failed' ? (
+                            <span style={{ color: '#ff8e9c' }}>{row.error}</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>
+                          {row.status === 'success' ? (
+                            <button
+                              type="button"
+                              className="ghost-button batch-inspect-btn"
+                              title="Inspect this posting in the single-job analysis view with full autopsy and print report"
+                              onClick={() => onInspect(row)}
+                            >
+                              Inspect <span>→</span>
+                            </button>
+                          ) : (
+                            <span style={{ color: '#475569' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="batch-export-bar">
+                <button type="button" className="ghost-button" onClick={resetState}>
+                  Screen another file
+                </button>
+                <button type="button" className="primary-button batch-export-btn" onClick={handleExport}>
+                  Export Results CSV <span>↓</span>
+                </button>
+              </div>
+
+              <div className="batch-disclaimer-box">
+                <p style={{ margin: 0 }}>
+                  <strong>Disclaimer:</strong> Model outputs are decision-support signals and not definitive proof of fraud. The AI-text estimate is about writing style (such as vocabulary diversity and repetition) and does not prove AI authorship or fraud.
+                </p>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function Analyzer({
   form,
   setForm,
   result,
+  setResult,
   loading,
   error,
   onAnalyze,
@@ -594,7 +1213,11 @@ function Analyzer({
   setComparisonDraft,
   activePreset,
   onLoadPreset,
+  API_BASE_URL,
+  setApiAvailable,
 }) {
+  const [analyzerMode, setAnalyzerMode] = useState('single');
+
   const update = (event) => {
     setForm((current) => ({
       ...current,
@@ -613,215 +1236,253 @@ function Analyzer({
   );
 
   return (
-    <div className="analyzer-grid">
-      <section className="surface editor-card">
-        <div className="section-head">
-          <div>
-            <span className="overline">01 / INPUT</span>
-            <h2>Job posting</h2>
-            <p>
-              Review the visible information before sending it for analysis.
-            </p>
-          </div>
-
-          <span className="live-label">
-            <i />
-            USER-TRIGGERED
-          </span>
+    <div>
+      <div className="analyzer-mode-bar">
+        <div className="mode-toggle-group" role="tablist" aria-label="Analysis mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={analyzerMode === 'single'}
+            className={`mode-toggle-btn ${analyzerMode === 'single' ? 'active' : ''}`}
+            onClick={() => setAnalyzerMode('single')}
+          >
+            Single posting
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={analyzerMode === 'batch'}
+            className={`mode-toggle-btn ${analyzerMode === 'batch' ? 'active' : ''}`}
+            onClick={() => setAnalyzerMode('batch')}
+          >
+            CSV batch screening
+          </button>
         </div>
+      </div>
 
-        <div className="preset-bar">
-          <span className="preset-bar-title">ILLUSTRATIVE PRESETS (CLICK TO POPULATE FORM)</span>
-          <div className="preset-buttons">
-            {DEMO_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={`ghost-button preset-btn ${activePreset === preset.id ? 'active' : ''}`}
-                onClick={() => onLoadPreset(preset.id)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {analyzerMode === 'single' ? (
+        <div className="analyzer-grid">
+          <section className="surface editor-card">
+            <div className="section-head">
+              <div>
+                <span className="overline">01 / INPUT</span>
+                <h2>Job posting</h2>
+                <p>
+                  Review the visible information before sending it for analysis.
+                </p>
+              </div>
 
-        <form onSubmit={onAnalyze}>
-          <div className="field-grid">
-            {[
-              'title',
-              'company',
-              'location',
-              'salary',
-              'employment_type',
-              'experience',
-              'website',
-              'application_url',
-            ].map((field) => (
-              <label className="field" key={field}>
-                <span>{labelize(field)}</span>
+              <span className="live-label">
+                <i />
+                USER-TRIGGERED
+              </span>
+            </div>
 
-                <input
-                  name={field}
-                  value={form[field]}
+            <div className="preset-bar">
+              <span className="preset-bar-title">ILLUSTRATIVE PRESETS (CLICK TO POPULATE FORM)</span>
+              <div className="preset-buttons">
+                {DEMO_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`ghost-button preset-btn ${activePreset === preset.id ? 'active' : ''}`}
+                    onClick={() => onLoadPreset(preset.id)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={onAnalyze}>
+              <div className="field-grid">
+                {[
+                  'title',
+                  'company',
+                  'location',
+                  'salary',
+                  'employment_type',
+                  'experience',
+                  'website',
+                  'application_url',
+                ].map((field) => (
+                  <label className="field" key={field}>
+                    <span>{labelize(field)}</span>
+
+                    <input
+                      name={field}
+                      value={form[field]}
+                      onChange={update}
+                      placeholder={`Enter ${labelize(field).toLowerCase()}`}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <label className="field field-wide editor-field">
+                <span>
+                  Description <em>{form.description.length} characters</em>
+                </span>
+
+                <textarea
+                  name="description"
+                  value={form.description}
                   onChange={update}
-                  placeholder={`Enter ${labelize(field).toLowerCase()}`}
+                  rows="9"
+                  placeholder="Paste the visible job description here..."
                 />
               </label>
-            ))}
-          </div>
 
-          <label className="field field-wide editor-field">
-            <span>
-              Description <em>{form.description.length} characters</em>
-            </span>
+              <div className="optional-row">
+                <label className="field">
+                  <span>
+                    Requirements <em>optional</em>
+                  </span>
 
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={update}
-              rows="9"
-              placeholder="Paste the visible job description here..."
-            />
-          </label>
-
-          <div className="optional-row">
-            <label className="field">
-              <span>
-                Requirements <em>optional</em>
-              </span>
-
-              <textarea
-                name="requirements"
-                value={form.requirements}
-                onChange={update}
-                rows="3"
-              />
-            </label>
-
-            <label className="field">
-              <span>
-                Benefits <em>optional</em>
-              </span>
-
-              <textarea
-                name="benefits"
-                value={form.benefits}
-                onChange={update}
-                rows="3"
-              />
-            </label>
-          </div>
-
-          <details className="comparison-editor">
-            <summary>Compare with another listing <span>Optional · enter details you found on another source</span></summary>
-            <div className="field-grid comparison-fields">
-              {['platform', 'title', 'company', 'location', 'salary', 'url'].map((field) => (
-                <label className="field" key={field}>
-                  <span>{labelize(field)}</span>
-                  <input
-                    value={comparisonDraft[field]}
-                    onChange={(event) => setComparisonDraft((current) => ({ ...current, [field]: event.target.value }))}
-                    placeholder={`Other source ${labelize(field).toLowerCase()}`}
+                  <textarea
+                    name="requirements"
+                    value={form.requirements}
+                    onChange={update}
+                    rows="3"
                   />
                 </label>
-              ))}
-            </div>
-            <p className="fine-print">Only the values you enter are compared. This does not search external job sites.</p>
-          </details>
 
-          <div className="form-actions">
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={onDemo}
-            >
-              Load demo
-            </button>
+                <label className="field">
+                  <span>
+                    Benefits <em>optional</em>
+                  </span>
 
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={onClear}
-            >
-              Clear
-            </button>
-
-            <button
-              className="primary-button"
-              disabled={loading}
-            >
-              {loading ? 'Analyzing…' : 'Analyze job'} <span>→</span>
-            </button>
-          </div>
-
-          {error && (
-            <p className="error-text" role="alert">
-              <Icon>!</Icon>
-              {error}
-            </p>
-          )}
-        </form>
-      </section>
-
-      <section className="surface preview-card">
-        <div className="section-head">
-          <div>
-            <span className="overline">02 / OUTPUT</span>
-            <h2>Analysis preview</h2>
-          </div>
-
-          {result && (
-            <div className="preview-header-actions">
-              <span className="complete-label">COMPLETE</span>
-              <button
-                type="button"
-                className="ghost-button print-report-btn"
-                onClick={() => window.print()}
-              >
-                Print report
-              </button>
-            </div>
-          )}
-        </div>
-
-        {loading ? (
-          <div className="loading-state">
-            <div className="loading-orb">◈</div>
-
-            <h3>Reading the signal</h3>
-
-            {loadingSteps.map((step, index) => (
-              <div className="loading-step" key={step}>
-                <span>
-                  {index < 2 ? '✓' : index === 2 ? '◉' : '○'}
-                </span>
-                {step}
+                  <textarea
+                    name="benefits"
+                    value={form.benefits}
+                    onChange={update}
+                    rows="3"
+                  />
+                </label>
               </div>
-            ))}
-          </div>
-        ) : result ? (
-          <Result result={result} form={form} />
-        ) : (
-          <div className="empty-state">
-            <div className="shield-mark">◈</div>
 
-            <h3>Ready to analyze</h3>
+              <details className="comparison-editor">
+                <summary>Compare with another listing <span>Optional · enter details you found on another source</span></summary>
+                <div className="field-grid comparison-fields">
+                  {['platform', 'title', 'company', 'location', 'salary', 'url'].map((field) => (
+                    <label className="field" key={field}>
+                      <span>{labelize(field)}</span>
+                      <input
+                        value={comparisonDraft[field]}
+                        onChange={(event) => setComparisonDraft((current) => ({ ...current, [field]: event.target.value }))}
+                        placeholder={`Other source ${labelize(field).toLowerCase()}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="fine-print">Only the values you enter are compared. This does not search external job sites.</p>
+              </details>
 
-            <p>
-              Submit a job posting to generate an explainable risk
-              assessment.
-            </p>
+              <div className="form-actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={onDemo}
+                >
+                  Load demo
+                </button>
 
-            <span className="empty-hint">
-              Fraud + AI signals · human review
-            </span>
-          </div>
-        )}
-      </section>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={onClear}
+                >
+                  Clear
+                </button>
+
+                <button
+                  className="primary-button"
+                  disabled={loading}
+                >
+                  {loading ? 'Analyzing…' : 'Analyze job'} <span>→</span>
+                </button>
+              </div>
+
+              {error && (
+                <p className="error-text" role="alert">
+                  <Icon>!</Icon>
+                  {error}
+                </p>
+              )}
+            </form>
+          </section>
+
+          <section className="surface preview-card">
+            <div className="section-head">
+              <div>
+                <span className="overline">02 / OUTPUT</span>
+                <h2>Analysis preview</h2>
+              </div>
+
+              {result && (
+                <div className="preview-header-actions">
+                  <span className="complete-label">COMPLETE</span>
+                  <button
+                    type="button"
+                    className="ghost-button print-report-btn"
+                    onClick={() => window.print()}
+                  >
+                    Print report
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="loading-state">
+                <div className="loading-orb">◈</div>
+
+                <h3>Reading the signal</h3>
+
+                {loadingSteps.map((step, index) => (
+                  <div className="loading-step" key={step}>
+                    <span>
+                      {index < 2 ? '✓' : index === 2 ? '◉' : '○'}
+                    </span>
+                    {step}
+                  </div>
+                ))}
+              </div>
+            ) : result ? (
+              <Result result={result} form={form} />
+            ) : (
+              <div className="empty-state">
+                <div className="shield-mark">◈</div>
+
+                <h3>Ready to analyze</h3>
+
+                <p>
+                  Submit a job posting to generate an explainable risk
+                  assessment.
+                </p>
+
+                <span className="empty-hint">
+                  Fraud + AI signals · human review
+                </span>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : (
+        <BatchScreening
+          onInspect={(row) => {
+            setForm(row.payload);
+            setResult(row.rawResult);
+            setAnalyzerMode('single');
+          }}
+          API_BASE_URL={API_BASE_URL}
+          setApiAvailable={setApiAvailable}
+        />
+      )}
     </div>
   );
 }
+
 
 function Result({ result, form }) {
   const aiValue = result.ai_generation_probability;
@@ -1891,6 +2552,7 @@ function App() {
               form={form}
               setForm={setForm}
               result={result}
+              setResult={setResult}
               loading={loading}
               error={error}
               onAnalyze={analyze}
@@ -1900,6 +2562,8 @@ function App() {
               setComparisonDraft={setComparisonDraft}
               activePreset={activePreset}
               onLoadPreset={loadPreset}
+              API_BASE_URL={API_BASE_URL}
+              setApiAvailable={setApiAvailable}
             />
           )}
 
