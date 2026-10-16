@@ -833,6 +833,80 @@ function formatDateTime(date = new Date()) {
   }
 }
 
+function exportReviewLogToCSV(history = []) {
+  if (!history || history.length === 0) return;
+
+  const headers = [
+    'Row',
+    'Job Title',
+    'Company',
+    'Screening Date',
+    'Fraud Risk Level',
+    'Fraud Probability',
+    'AI-Text Estimate',
+    'Review Status',
+    'Review Note',
+  ];
+
+  const sanitizeSpreadsheetVal = (val) => {
+    let str = String(val == null ? '' : val);
+    // Protect user-entered text against spreadsheet formula injection (CSV injection),
+    // including values that begin with whitespace followed by =, +, -, or @
+    if (/^\s*[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    return str;
+  };
+
+  const escapeVal = (val) => {
+    const safeStr = sanitizeSpreadsheetVal(val);
+    if (safeStr.includes(',') || safeStr.includes('"') || safeStr.includes('\n') || safeStr.includes('\r')) {
+      return `"${safeStr.replace(/"/g, '""')}"`;
+    }
+    return safeStr;
+  };
+
+  const lines = [headers.map(escapeVal).join(',')];
+
+  history.forEach((item, idx) => {
+    const fraudProb =
+      item.fraud_probability != null && !isNaN(Number(item.fraud_probability))
+        ? `${(Number(item.fraud_probability) * 100).toFixed(1)}%`
+        : 'Not available';
+
+    const aiProb =
+      item.ai_generation_probability != null && !isNaN(Number(item.ai_generation_probability))
+        ? `${(Number(item.ai_generation_probability) * 100).toFixed(1)}%`
+        : 'Not available';
+
+    const line = [
+      idx + 1,
+      item.title || 'Untitled posting',
+      item.company || '—',
+      item.dateTime || (item.timestamp ? formatDateTime(new Date(item.timestamp)) : 'Not available'),
+      item.risk_level || 'Not available',
+      fraudProb,
+      aiProb,
+      item.review_status || 'Not reviewed',
+      item.review_note || '',
+    ];
+
+    lines.push(line.map(escapeVal).join(','));
+  });
+
+  const csvString = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  link.setAttribute('download', `jobshield_review_log_${dateStr}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function getSessionHistory() {
   try {
     if (typeof window === 'undefined' || !window.sessionStorage) {
@@ -1467,21 +1541,36 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError, onUpd
           </p>
         </div>
         {history && history.length > 0 && (
-          <button
-            type="button"
-            className="ghost-button history-clear-btn"
-            onClick={handleClearAllHistory}
-            title="Clear all saved screening history from this session"
-          >
-            Clear History
-          </button>
+          <div className="history-head-actions">
+            <div className="history-actions-buttons">
+              <button
+                type="button"
+                className="ghost-button history-export-btn"
+                onClick={() => exportReviewLogToCSV(history)}
+                title="Download human review log and screening results as CSV"
+              >
+                Export Review Log CSV <span>↓</span>
+              </button>
+              <button
+                type="button"
+                className="ghost-button history-clear-btn"
+                onClick={handleClearAllHistory}
+                title="Clear all saved screening history from this session"
+              >
+                Clear History
+              </button>
+            </div>
+            <span className="history-device-note">
+              Downloaded files contain screening and review information and remain on your device after the tab closes.
+            </span>
+          </div>
         )}
       </div>
 
       <div className="batch-privacy-note history-privacy-note" role="note">
         <Icon>ℹ</Icon>
         <div>
-          <strong>Privacy notice:</strong> Job details are sent to the configured analysis server for screening; review notes and statuses are stored only in this tab’s session history, cleared when history is cleared or the tab closes.
+          <strong>Privacy notice:</strong> Job details are sent to the configured analysis server for screening; review notes and statuses are stored only in this tab’s session history, cleared when history is cleared or the tab closes. Downloaded CSV files contain screening and review information and remain on your device after the tab closes.
         </div>
       </div>
 

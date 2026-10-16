@@ -31,6 +31,7 @@
 .batch-export-btn:focus-visible,
 .batch-print-btn:focus-visible,
 .history-inspect-btn:focus-visible,
+.history-export-btn:focus-visible,
 .history-clear-btn:focus-visible,
 .history-table-container:focus-visible,
 .history-checkbox:focus-visible,
@@ -354,6 +355,29 @@
   gap: 16px;
   flex-wrap: wrap;
 }
+.history-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.history-actions-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.history-export-btn {
+  padding: 6px 14px;
+  font-size: 0.68rem;
+  color: #93c5fd;
+  border-color: #23334d;
+}
+.history-export-btn:hover {
+  background: #141e30;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
 .history-clear-btn {
   padding: 6px 14px;
   font-size: 0.68rem;
@@ -364,6 +388,13 @@
   background: #2b1319;
   border-color: #ef8796;
   color: #ffa4b2;
+}
+.history-device-note {
+  font-size: 0.62rem;
+  color: #64748b;
+  max-width: 340px;
+  text-align: right;
+  line-height: 1.3;
 }
 .history-privacy-note {
   margin: 18px 0;
@@ -963,6 +994,7 @@
   .batch-inspect-btn,
   .batch-print-btn,
   .history-inspect-btn,
+  .history-export-btn,
   .history-clear-btn,
   .compare-inspect-btn,
   .history-clear-selection-btn,
@@ -978,6 +1010,14 @@
   .history-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .history-head-actions {
+    align-items: flex-start;
+    width: 100%;
+  }
+  .history-device-note {
+    text-align: left;
+    max-width: 100%;
   }
   .history-comparison-header {
     flex-direction: column;
