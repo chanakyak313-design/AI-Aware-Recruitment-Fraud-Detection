@@ -2421,6 +2421,7 @@ function RecentHistory({ history, onInspect, onClearHistory, storageError, onUpd
 }
 
 function Analyzer({
+  initialMode = 'single',
   form,
   setForm,
   result,
@@ -2443,7 +2444,13 @@ function Analyzer({
   onPrintBatch,
   onUpdateReview,
 }) {
-  const [analyzerMode, setAnalyzerMode] = useState('single');
+  const [analyzerMode, setAnalyzerMode] = useState(initialMode || 'single');
+
+  useEffect(() => {
+    if (initialMode) {
+      setAnalyzerMode(initialMode);
+    }
+  }, [initialMode]);
 
   const update = (event) => {
     setForm((current) => ({
@@ -3493,109 +3500,350 @@ function Research({ research, mode }) {
   );
 }
 
-function Overview({ modelInfo, setTab }) {
+function Overview({
+  apiAvailable,
+  mode,
+  modelInfo,
+  onStartSingle,
+  onStartBatch,
+  onStartHistory,
+  onTryDemo,
+}) {
   return (
-    <section className="overview-page">
-      <div className="hero-panel">
-        <div className="hero-copy">
-          <span className="overline">
-            JOB FRAUD INTELLIGENCE
+    <section className="overview-page editorial-overview" aria-label="JobShield AI Overview and Landing">
+      {/* Subtle monochrome grain texture overlay */}
+      <div className="grain-overlay" aria-hidden="true" />
+
+      {/* EDITORIAL HERO SECTION */}
+      <div className="hero-editorial">
+        <div className={`hero-status-pill ${apiAvailable ? 'connected' : 'standalone'}`}>
+          <span className={`hero-pulse-dot ${apiAvailable ? '' : 'offline'}`} aria-hidden="true" />
+          <span className="hero-status-text">
+            {apiAvailable ? 'SYSTEM READY · API CONNECTED' : 'STANDALONE MODE · LOCAL HEURISTICS'}
           </span>
+        </div>
 
-          <h2>
-            Detect suspicious job postings{' '}
-            <em>before they become a risk.</em>
-          </h2>
+        <span className="hero-kicker">Forensic Recruitment Intelligence</span>
 
-          <p>
-            JobShield separates fraudulent-intent signals from
-            AI-generated writing signals so every assessment stays
-            explainable, evidence-based, and human-reviewed.
-          </p>
+        <h1 className="hero-editorial-title">
+          Verifiable Trust. <em>Empirical</em> Protection.
+        </h1>
 
+        <p className="hero-editorial-sub">
+          JobShield couples calibrated machine-learning fraud classification with independent stylometry and local SHAP feature attributions—protecting recruitment pipelines before candidates take the risk.
+        </p>
+
+        <div className="hero-cta-pill-row">
           <button
-            className="primary-button"
-            onClick={() => setTab('analyzer')}
+            type="button"
+            className="pill-cta-primary"
+            onClick={onStartSingle}
           >
-            Analyze a job <span>→</span>
+            <span>Screen a Job Posting</span>
+            <span aria-hidden="true">↗</span>
+          </button>
+          <button
+            type="button"
+            className="pill-cta-teal"
+            onClick={onStartBatch}
+          >
+            <span>CSV Batch Screening</span>
+            <span aria-hidden="true">↗</span>
+          </button>
+          <button
+            type="button"
+            className="pill-cta-ghost"
+            onClick={onTryDemo}
+          >
+            Try Sample Demo
           </button>
         </div>
 
-        <div className="pipeline-visual">
-          <span className="pipeline-label">
-            ANALYSIS PIPELINE
-          </span>
+        {/* WIDE DRAMATIC HERO ARTWORK (Candidate Trust Meets Algorithmic Forensic Shield) */}
+        <div className="hero-art-container" aria-label="Conceptual illustration of candidate trust meeting algorithmic forensic verification">
+          <svg className="art-svg" viewBox="0 0 1100 480" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Forensic architecture schematic">
+            <defs>
+              <pattern id="editorialHalftone" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse">
+                <circle cx="6" cy="6" r="1.4" fill="#0c0e14" opacity="0.18" />
+              </pattern>
+              <linearGradient id="editorialBeam" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#4338ca" stopOpacity="0.08" />
+                <stop offset="50%" stopColor="#0f766e" stopOpacity="0.12" />
+                <stop offset="100%" stopColor="#4338ca" stopOpacity="0.02" />
+              </linearGradient>
+              <radialGradient id="editorialGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+                <stop offset="60%" stopColor="#ffffff" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#f8f9fc" stopOpacity="0" />
+              </radialGradient>
+            </defs>
 
-          {[
-            ['01', 'JOB POSTING', 'Visible posting data'],
-            [
-              '02',
-              'FEATURE EXTRACTION',
-              'Text + structured signals',
-            ],
-            [
-              '03',
-              'DUAL MODELS',
-              'Fraud + AI independently',
-            ],
-            [
-              '04',
-              'EXPLAINABLE RESULT',
-              'Scores, signals, SHAP',
-            ],
-          ].map(([num, title, sub], index) => (
-            <div className="pipeline-step" key={title}>
-              <b>{num}</b>
+            {/* Subtle grid canvas */}
+            <rect width="1100" height="480" fill="#fafbfe" />
+            <rect width="1100" height="480" fill="url(#editorialHalftone)" />
 
-              <div>
-                <strong>{title}</strong>
-                <small>{sub}</small>
-              </div>
+            {/* Center Convergence Glow */}
+            <circle cx="550" cy="240" r="180" fill="url(#editorialGlow)" />
 
-              {index < 3 && <i>↓</i>}
+            {/* Left Side: Algorithmic Forensic Verification Lattice */}
+            <g opacity="0.88">
+              <path d="M40 240 L380 240 M80 180 L340 220 M80 300 L340 260 M140 130 L310 205 M140 350 L310 275" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" />
+              <circle cx="280" cy="240" r="32" stroke="#4338ca" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.4" />
+              <circle cx="280" cy="240" r="16" fill="#eef2ff" stroke="#4338ca" strokeWidth="1.5" />
+              <text x="280" y="244" fontFamily="'DM Mono', monospace" fontSize="9" fontWeight="700" fill="#4338ca" textAnchor="middle">ML · 87%</text>
+
+              <path d="M120 240 C 220 240, 320 220, 480 238" stroke="#1e222e" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M180 200 C 260 210, 360 225, 470 234" stroke="#1e222e" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M180 280 C 260 270, 360 255, 470 242" stroke="#1e222e" strokeWidth="1.4" strokeLinecap="round" />
+
+              <circle cx="490" cy="238" r="8" fill="#ffffff" stroke="#4338ca" strokeWidth="2" />
+              <circle cx="490" cy="238" r="3" fill="#4338ca" />
+              <line x1="490" y1="218" x2="490" y2="258" stroke="#4338ca" strokeWidth="0.8" opacity="0.6" />
+              <line x1="470" y1="238" x2="510" y2="238" stroke="#4338ca" strokeWidth="0.8" opacity="0.6" />
+              <text x="490" y="212" fontFamily="'DM Mono', monospace" fontSize="8" fontWeight="600" fill="#4338ca" textAnchor="middle">SHAP VECTOR</text>
+            </g>
+
+            {/* Middle Convergence Spark: Verification */}
+            <circle cx="550" cy="240" r="44" fill="url(#editorialBeam)" />
+            <path d="M510 238 Q 550 235 590 239" stroke="#0f766e" strokeWidth="2" strokeDasharray="2 3" />
+            <polygon points="550,226 553,237 564,240 553,243 550,254 547,243 536,240 547,237" fill="#0f766e" />
+
+            {/* Right Side: Candidate Trust & Career Integrity */}
+            <g opacity="0.88">
+              <path d="M1060 240 L620 240 M1020 180 L760 220 M1020 300 L760 260 M960 130 L790 205 M960 350 L790 275" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4 4" />
+              <circle cx="820" cy="240" r="32" stroke="#0f766e" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.4" />
+              <circle cx="820" cy="240" r="16" fill="#f0fdfa" stroke="#0f766e" strokeWidth="1.5" />
+              <text x="820" y="244" fontFamily="'DM Mono', monospace" fontSize="9" fontWeight="700" fill="#0f766e" textAnchor="middle">VERIFIED</text>
+
+              <path d="M980 240 C 880 240, 780 230, 610 239" stroke="#1e222e" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M920 200 C 840 215, 740 232, 620 235" stroke="#1e222e" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M920 280 C 840 265, 740 248, 620 243" stroke="#1e222e" strokeWidth="1.4" strokeLinecap="round" />
+
+              <circle cx="610" cy="239" r="8" fill="#ffffff" stroke="#0f766e" strokeWidth="2" />
+              <circle cx="610" cy="239" r="3" fill="#0f766e" />
+              <text x="610" y="212" fontFamily="'DM Mono', monospace" fontSize="8" fontWeight="600" fill="#0f766e" textAnchor="middle">HUMAN AUDIT</text>
+            </g>
+
+            {/* Metrology Indicators */}
+            <g opacity="0.45" fontFamily="'DM Mono', monospace" fontSize="7" fill="#64748b">
+              <text x="50" y="440">EMSCAD-CORPUS // REF. 17,880</text>
+              <text x="550" y="440" textAnchor="middle">CALIBRATED INFERENCE // DECOUPLED DUAL-ENGINE</text>
+              <text x="1050" y="440" textAnchor="end">LOCAL SHAP ATTRIBUTIONS // ADDITIVE</text>
+            </g>
+          </svg>
+
+          <div className="art-caption-strip">
+            <div className="art-caption-left">
+              <span className="art-dot" />
+              <span>FIG 01. DECOUPLED VERIFICATION PARADIGM: STATISTICAL FRAUD CLASSIFICATION &amp; STYLOMETRIC ANALYSIS</span>
             </div>
-          ))}
+            <span>ILLUSTRATIVE CONCEPT · NOT REAL-TIME DATA</span>
+          </div>
+        </div>
+
+        {/* STANDARDS VERIFICATION STRIP */}
+        <div className="standards-strip">
+          <div className="standards-label">Empirically Grounded Verification Architecture</div>
+          <div className="standards-grid">
+            <div className="standard-item">
+              <span className="standard-check">✓</span>
+              <span>Corpus: <strong>{modelInfo?.dataset_rows ? modelInfo.dataset_rows.toLocaleString() : '17,880'} Postings</strong></span>
+            </div>
+            <div className="standard-item">
+              <span className="standard-check">✓</span>
+              <span>Classifier: <strong>{modelInfo?.fraud_model?.type || 'Logistic Regression'}</strong></span>
+            </div>
+            <div className="standard-item">
+              <span className="standard-check">✓</span>
+              <span>Ground Truth: <strong>{modelInfo?.fraud_samples ? modelInfo.fraud_samples.toLocaleString() : '866'} Scams</strong></span>
+            </div>
+            <div className="standard-item">
+              <span className="standard-check">✓</span>
+              <span>Explainability: <strong>Local SHAP</strong></span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="overview-head">
-        <div>
-          <span className="overline">
-            SYSTEM OVERVIEW
-          </span>
-
-          <h2>Evidence at a glance</h2>
+      {/* CORE WORKFLOW GATEWAYS */}
+      <div className="landing-section gateways-section">
+        <div className="landing-section-header">
+          <span className="landing-overline">WORKFLOW GATEWAYS</span>
+          <h2 className="landing-heading">Three tailored screening pathways</h2>
+          <p className="landing-subheading">
+            Choose the screening mode that matches your operational requirements—from quick candidate audits to high-volume recruitment pipeline scans.
+          </p>
         </div>
 
-        <span className="muted">
-          Live from research artifacts
-        </span>
+        <div className="gateways-grid">
+          {/* GATEWAY 1 */}
+          <div className="gateway-card gateway-single">
+            <div className="gateway-card-top">
+              <span className="gateway-tag">INDIVIDUAL AUDIT</span>
+              <div className="gateway-icon-badge indigo" aria-hidden="true">⚡</div>
+            </div>
+            <h3 className="gateway-title">Single-Posting Forensic Scan</h3>
+            <p className="gateway-desc">
+              Inspect suspicious job descriptions, compensation promises, and recruiter contacts. Uncover empirical fraud indicators, employer domain consistency checks, and local SHAP explanations.
+            </p>
+            <ul className="gateway-highlights">
+              <li><span>✓</span> Dual fraud risk & AI-text estimations</li>
+              <li><span>✓</span> Domain & application URL consistency check</li>
+              <li><span>✓</span> Top positive and negative SHAP feature factors</li>
+            </ul>
+            <button
+              type="button"
+              className="gateway-btn"
+              onClick={onStartSingle}
+            >
+              Launch Single Analyzer <span>→</span>
+            </button>
+          </div>
+
+          {/* GATEWAY 2 */}
+          <div className="gateway-card featured gateway-batch">
+            <div className="gateway-card-top">
+              <span className="gateway-tag highlight">BATCH INTELLIGENCE</span>
+              <div className="gateway-icon-badge teal" aria-hidden="true">📊</div>
+            </div>
+            <h3 className="gateway-title">CSV Batch Screening & Insights</h3>
+            <p className="gateway-desc">
+              Process up to 25 job postings in an automated queue. Review batch distributions, explore interactive risk filters, identify recurring fraud signals, and export audit reports.
+            </p>
+            <ul className="gateway-highlights">
+              <li><span>✓</span> Batch Insights dashboard with risk-tier counts</li>
+              <li><span>✓</span> Interactive signal filter and progress tracker</li>
+              <li><span>✓</span> Complete CSV export and formatted batch printing</li>
+            </ul>
+            <button
+              type="button"
+              className="gateway-btn primary"
+              onClick={onStartBatch}
+            >
+              Open Batch Screening <span>→</span>
+            </button>
+          </div>
+
+          {/* GATEWAY 3 */}
+          <div className="gateway-card gateway-history">
+            <div className="gateway-card-top">
+              <span className="gateway-tag">AUDIT TRAIL</span>
+              <div className="gateway-icon-badge coral" aria-hidden="true">⚖️</div>
+            </div>
+            <h3 className="gateway-title">Review Log & Comparative SHAP</h3>
+            <p className="gateway-desc">
+              Retain session screening history, record human reviewer notes and statuses, compare 2–3 jobs side-by-side with genuine SHAP feature attributions, and export formula-safe CSV logs.
+            </p>
+            <ul className="gateway-highlights">
+              <li><span>✓</span> Human-in-the-loop review status & note tracking</li>
+              <li><span>✓</span> Side-by-side SHAP directional comparison</li>
+              <li><span>✓</span> Spreadsheet-injection safe CSV review log export</li>
+            </ul>
+            <button
+              type="button"
+              className="gateway-btn"
+              onClick={onStartHistory}
+            >
+              View Screening History <span>→</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="overview-metrics">
-        <Metric
-          name="Dataset"
-          value={
-            modelInfo?.dataset_rows?.toLocaleString() || '—'
-          }
-        />
+      {/* METHODOLOGY PIPELINE FLOW */}
+      <div className="landing-section pipeline-section">
+        <div className="landing-section-header">
+          <span className="landing-overline">TRANSPARENT ARCHITECTURE</span>
+          <h2 className="landing-heading">From job posting to explainable evidence</h2>
+          <p className="landing-subheading">
+            Every screening moves through a predictable four-stage verification sequence designed for defensibility and human auditability.
+          </p>
+        </div>
 
-        <Metric
-          name="Fraud samples"
-          value={
-            modelInfo?.fraud_samples?.toLocaleString() || '—'
-          }
-        />
+        <div className="landing-pipeline-grid">
+          <div className="pipeline-card step-input">
+            <div className="pipeline-step-badge">STEP 01 · INPUT</div>
+            <h4>Input & Normalization</h4>
+            <p>
+              Extracts visible posting text, structured salary intervals, company website, application URL, and contact email addresses.
+            </p>
+          </div>
+          <div className="pipeline-card step-extraction">
+            <div className="pipeline-step-badge">STEP 02 · EXTRACTION</div>
+            <h4>Dual Feature Extraction</h4>
+            <p>
+              Extracts empirical n-gram signals, contact domain indicators, and stylometric text markers (lexical diversity and sentence perplexity).
+            </p>
+          </div>
+          <div className="pipeline-card step-inference">
+            <div className="pipeline-step-badge">STEP 03 · INFERENCE</div>
+            <h4>Decoupled Model Inference</h4>
+            <p>
+              Logistic Regression classifier computes fraud probability, while a separate stylometric model estimates AI writing characteristics.
+            </p>
+          </div>
+          <div className="pipeline-card step-verdict">
+            <div className="pipeline-step-badge">STEP 04 · VERDICT</div>
+            <h4>Explainability & Human Verdict</h4>
+            <p>
+              Produces directional SHAP feature contributions, identity mismatch alerts, and an editable human review audit log.
+            </p>
+          </div>
+        </div>
+      </div>
 
-        <Metric
-          name="Fraud model"
-          value={modelInfo?.fraud_model?.type || '—'}
-        />
+      {/* VERIFIED RESEARCH METRICS */}
+      <div className="landing-section metrics-section">
+        <div className="landing-section-header">
+          <span className="landing-overline">RESEARCH FOUNDATION</span>
+          <h2 className="landing-heading">Verified empirical benchmarks</h2>
+          <p className="landing-subheading">
+            Trained and evaluated on the University of the Aegean Employment Scam Aegean Dataset (EMSCAD).
+          </p>
+        </div>
 
-        <Metric
-          name="Explainability"
-          value="SHAP"
-        />
+        <div className="landing-metrics-grid">
+          <div className="landing-metric-card metric-dataset">
+            <span className="metric-accent-line" />
+            <span className="metric-caption">DATASET SIZE</span>
+            <strong className="metric-number">
+              {modelInfo?.dataset_rows ? modelInfo.dataset_rows.toLocaleString() : '17,880'}
+            </strong>
+            <span className="metric-subtext">Evaluated recruitment postings</span>
+          </div>
+
+          <div className="landing-metric-card metric-fraud">
+            <span className="metric-accent-line" />
+            <span className="metric-caption">FRAUD SAMPLES</span>
+            <strong className="metric-number">
+              {modelInfo?.fraud_samples ? modelInfo.fraud_samples.toLocaleString() : '866'}
+            </strong>
+            <span className="metric-subtext">Ground-truth scam cases</span>
+          </div>
+
+          <div className="landing-metric-card metric-classifier">
+            <span className="metric-accent-line" />
+            <span className="metric-caption">CLASSIFIER TYPE</span>
+            <strong className="metric-number">
+              {modelInfo?.fraud_model?.type || 'Logistic Regression'}
+            </strong>
+            <span className="metric-subtext">Calibrated probability estimator</span>
+          </div>
+
+          <div className="landing-metric-card metric-shap">
+            <span className="metric-accent-line" />
+            <span className="metric-caption">EXPLAINABILITY</span>
+            <strong className="metric-number">Local SHAP</strong>
+            <span className="metric-subtext">Additive feature attributions</span>
+          </div>
+        </div>
+
+        <div className="landing-disclaimer-box" role="note">
+          <div className="disclaimer-icon" aria-hidden="true">ℹ️</div>
+          <p>
+            <strong>Decision-Support Notice:</strong> JobShield AI is designed to assist human reviewers by flagging statistical anomalies, empirical scam indicators, and identity mismatches. A flagged indicator or model score does not constitute definitive proof of fraud or malicious intent, and stylistic AI markers do not imply deceptive practices. All final hiring or compliance determinations should be made by human evaluators.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -4032,6 +4280,27 @@ function App() {
   const [activePreset, setActivePreset] = useState(null);
   const [activePrintType, setActivePrintType] = useState('single');
   const [batchPrintData, setBatchPrintData] = useState(null);
+  const [analyzerInitialMode, setAnalyzerInitialMode] = useState('single');
+
+  const handleStartSingle = () => {
+    setAnalyzerInitialMode('single');
+    setTab('analyzer');
+  };
+
+  const handleStartBatch = () => {
+    setAnalyzerInitialMode('batch');
+    setTab('analyzer');
+  };
+
+  const handleStartHistory = () => {
+    setAnalyzerInitialMode('history');
+    setTab('analyzer');
+  };
+
+  const handleTryDemoFromLanding = () => {
+    setAnalyzerInitialMode('single');
+    tryDemo();
+  };
 
   /*
    * ============================================================
@@ -4351,13 +4620,19 @@ function App() {
 
           {tab === 'overview' && (
             <Overview
+              apiAvailable={apiAvailable}
+              mode={mode}
               modelInfo={modelInfo}
-              setTab={setTab}
+              onStartSingle={handleStartSingle}
+              onStartBatch={handleStartBatch}
+              onStartHistory={handleStartHistory}
+              onTryDemo={handleTryDemoFromLanding}
             />
           )}
 
           {tab === 'analyzer' && (
             <Analyzer
+              initialMode={analyzerInitialMode}
               form={form}
               setForm={setForm}
               result={result}
