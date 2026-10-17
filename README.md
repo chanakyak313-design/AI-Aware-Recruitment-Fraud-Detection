@@ -1,192 +1,335 @@
-# AI-Aware Recruitment Fraud Detection
+# JobShield: Forensic Recruitment Fraud Detection & AI-Aware Screening
 
-**Separate suspicious intent from AI-assisted writing.** This project analyzes job postings for two distinct signals: potential recruitment fraud and AI-generated or AI-assisted writing traits. The signals are reported independently; polished or AI-written copy is not, by itself, evidence of fraud.
+**Decoupling suspicious intent from AI-assisted writing.** JobShield is an explainable decision-support system that screens job postings for potential recruitment fraud while independently evaluating stylometric writing characteristics. Legitimate employers frequently use AI tools to draft or refine job descriptions; JobShield separates stylistic writing markers from fraudulent intent to avoid penalizing polished, AI-assisted copy.
 
-> **Research and demonstration project.** Predictions are screening signals for human review, not a definitive finding that a posting or employer is fraudulent.
+> **Decision-Support Notice:** Predictions and explainability outputs are screening signals designed to assist human evaluators and support research/viva demonstrations. A flagged indicator or model probability does not constitute a definitive finding that a posting or employer is fraudulent.
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Core Features & Workflows](#core-features--workflows)
+- [Technology Stack](#technology-stack)
+- [Local Setup & Execution](#local-setup--execution)
+- [Training & Research Reproduction](#training--research-reproduction)
+- [Chrome Extension](#chrome-extension)
+- [Repository Layout](#repository-layout)
+- [Research Boundaries & Critical Limitations](#research-boundaries--critical-limitations)
+- [Testing](#testing)
+- [License](#license)
+
+---
 
 ## Overview
 
-Online job seekers can encounter misleading or fraudulent postings, while legitimate employers increasingly use AI tools to draft job descriptions. Treating AI use as a fraud indicator would conflate writing style with intent. This project keeps those questions separate and brings the available evidence into one analysis workflow.
+Job seekers increasingly confront deceptive recruitment schemes, including identity theft, fee extortion, and check-cashing fraud. Concurrently, generative AI tools have made polished writing trivial for both legitimate hiring teams and bad actors. Conflating AI authorship with fraudulent intent creates false positives and misdirects candidate vigilance.
 
-The repository contains a FastAPI backend, a React and Vite interface, a Chrome extension, demo data, and scripts for training and research experiments. The shipped demo uses saved LogisticRegression pipelines and is intended to demonstrate the workflow. Its probabilities, indicators, and metrics are not estimates of real-world model performance.
+JobShield implements a decoupled two-signal verification architecture:
+1. **Fraud Classification Engine:** Evaluates empirical fraud signals, contact and domain integrity, and structural anomalies.
+2. **AI Stylometry Engine:** Evaluates statistical text properties (sentence variation, lexical diversity, perplexity markers) without treating AI writing style as evidence of fraud.
 
-## Features
+The application operates in two distinct runtime modes:
+- **Demo Mode:** Uses pre-bundled demonstration jobs and fallback scoring pipelines to showcase full UI workflows without requiring large external training datasets.
+- **Research Mode:** Activated when a real dataset is trained locally, exposing genuine held-out evaluation metrics, confusion matrices, background datasets, and local SHAP feature attributions.
 
-- **Fraud-risk analysis:** Scores a posting using the fraud model and available posting fields.
-- **AI-writing analysis:** Reports a separate writing-style signal; AI authorship does not imply fraudulent intent.
-- **Job Autopsy:** Combines the supplied posting and available fraud, AI-writing, and SHAP outputs into an evidence graph and structured report.
-- **SHAP explanations:** Provides ranked feature contributions when trained research artifacts are available and SHAP can run.
-- **Salary intelligence and safety checks:** Reports salary presence, format, and currency, along with pre-application completeness checks and missing supplied details. It does not invent a salary benchmark.
-- **Cross-source comparison:** Compares user-provided listing details across sources, including title, company, location, and salary. Comparisons normalize case and whitespace; salary units and currencies are not converted.
-- **Chrome extension:** Extracts visible page content only after the user requests analysis. The popup allows review and editing before submission.
-- **Research results:** After a real training run, the API can expose dataset and split statistics, a confusion matrix, fraud-model evaluation metrics, and the separate AI-aware experiment.
+---
 
-## How it works
-
-### Analysis pipeline
-
-1. A user enters a posting in the dashboard or chooses **Analyze This Job** in the extension.
-2. The extension extracts visible content from the current page and presents it for review. Users can edit the title, company, location, salary, description, website, and application URL.
-3. The frontend sends the supplied posting to the FastAPI backend.
-4. The backend runs the available fraud and AI-writing analyses separately and assembles an autopsy with the evidence and safety information available for that posting.
-5. The interface presents the results, evidence graph, and optional cross-source comparison details for human review.
-
-The extension includes adapters for LinkedIn, Indeed, and Glassdoor, plus a generic fallback. Site markup changes can require selector maintenance.
-
-### Fraud model and dataset
-
-The real-data workflow uses the EMSCAD dataset, supplied locally as `data/raw/fake_job_postings.csv`. Training validates the input schema and requires a documented fraud label (`fraudulent` or `fraud_label`); it does not fabricate labels. The training script extracts text and structured features, trains a fraud model with a held-out split, and writes model artifacts and research metrics.
-
-The repository does not include a real-data performance claim in this README. Research metrics become available through `/api/research-results` only after a real training run. Reported fraud metrics include Accuracy, Precision, Recall, F1, ROC-AUC, and PR-AUC, along with split sizes and a confusion matrix.
-
-### AI-generation analysis
-
-EMSCAD provides fraud labels but has no AI-generation ground truth. The project therefore keeps EMSCAD unchanged and creates a separate controlled AI corpus with `backend/app/create_ai_corpus.py`. It contains four provenance-labeled groups:
-
-- AI-generated legitimate
-- AI-generated fraudulent
-- Human-authored legitimate
-- Human-authored fraudulent
-
-The fraudulent examples in this corpus are synthetic scenarios, not real-world scam evidence. The AI classifier uses stylometric features from this separate corpus; EMSCAD fraud labels are not reused as AI labels. The AI-aware experiment compares baseline and AI-aware fraud models on the same held-out EMSCAD test set. Results from a synthetic corpus should not be generalized to all real-world AI-written postings.
-
-### SHAP explainability
-
-For research-mode fraud artifacts, training persists the transformed feature background used by `shap.LinearExplainer` to explain the trained logistic model. The API returns ranked feature contributions only when research artifacts exist and SHAP is available. SHAP explanations are not reported for demo predictions.
-
-### Job Autopsy, salary, and safety checks
-
-The autopsy is assembled from the supplied posting and the available fraud, AI-writing, and SHAP results. Its evidence graph can be filtered by fraud, AI-writing, SHAP, or final decision; selecting a node highlights connected evidence. Salary notes expand on demand. Safety checks identify which supplied pre-application details are present and which are missing.
-
-Salary reporting describes the provided salary’s presence, format, and currency. The application does not provide an independently verified market benchmark. Completeness checks are prompts to follow up, not proof that a posting is unsafe.
-
-### Cross-source comparison
-
-Users can enter up to five comparison sources. The API accepts `platform`, `title`, `company`, `location`, `salary`, and `url` for each source. The app compares the details supplied by the user; it does not search job sites or automatically verify company identity. Text comparison normalizes case and whitespace only, and salary values are not converted between currencies or units.
-
-## Architecture
+## System Architecture
 
 ```text
-Chrome extension ──┐
-                   ├──> React + Vite frontend ──> FastAPI backend
-Dashboard input ───┘                                  │
-                                                      ├── Fraud analysis
-                                                      ├── AI-writing analysis
-                                                      ├── SHAP (research artifacts only)
-                                                      └── Job Autopsy / comparison response
-
-EMSCAD ──> fraud training and held-out evaluation
-Controlled AI corpus ──> stylometric AI classifier and AI-aware experiment
+┌────────────────────────────────────────────────────────────────────────┐
+│                          INGESTION CHANNELS                            │
+│   Web Dashboard Input   │  CSV Batch Upload  │  Chrome Extension (MV3)  │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ HTTP POST /api/analyze
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                       FASTAPI BACKEND SERVICE                          │
+│                                                                        │
+│   ┌───────────────────────────┐     ┌──────────────────────────────┐   │
+│   │ Fraud Feature Extraction  │     │ Stylometric Text Extraction  │   │
+│   │ (TF-IDF N-grams, Domain,  │     │ (Burstiness, Length Var.,    │   │
+│   │  Salary, Questions, Fee)  │     │  Type-Token Ratio, Punct.)   │   │
+│   └─────────────┬─────────────┘     └──────────────┬───────────────┘   │
+│                 │                                  │                   │
+│                 ▼                                  ▼                   │
+│   ┌───────────────────────────┐     ┌──────────────────────────────┐   │
+│   │     Fraud Classifier      │     │    AI-Text Stylometry        │   │
+│   │   (Logistic Regression)   │     │   (Logistic Regression)      │   │
+│   └─────────────┬─────────────┘     └──────────────┬───────────────┘   │
+│                 │                                  │                   │
+│                 ├────────────────┬─────────────────┘                   │
+│                 ▼                ▼                                     │
+│   ┌───────────────────────────┐ ┌──────────────────────────────────┐   │
+│   │  SHAP LinearExplainer     │ │      Job Autopsy Engine          │   │
+│   │  (Local feature weights)  │ │   (Relational Evidence Graph,    │   │
+│   │  [Research Mode only]     │ │    Domain Checks, Safety Audit)  │   │
+│   └─────────────┬─────────────┘ └──────────────────┬───────────────┘   │
+│                 └────────────────┬─────────────────┘                   │
+└──────────────────────────────────┼─────────────────────────────────────┘
+                                   │ JSON Analysis Response
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   REACT + VITE FORENSIC DASHBOARD                      │
+│   • Single-Posting Analyzer     • Interactive Autopsy Evidence Graph   │
+│   • Directional SHAP Summary    • Domain Mismatch & Contact Warnings   │
+│   • CSV Batch Screening Queue   • Batch Risk-Tier Filtering Insights   │
+│   • Session Review Log          • Side-by-Side Multi-Job Comparison    │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-The extension keeps the configured hosted API as its default. Its **API connection** setting can point to a different deployment or to `http://localhost:8000` for local testing. The backend includes a Chrome extension CORS rule.
+---
 
-## Technology
+## Core Features & Workflows
 
-Documented repository components include:
+### 1. Single-Posting Forensic Analyzer
+- **Dual-Model Scoring:** Computes an independent fraud risk score (Low, Medium, High) alongside an independent AI-text stylometry probability.
+- **Domain & Contact Verification:** Detects public free-webmail addresses (`@gmail.com`, `@yahoo.com`, etc.) used as corporate recruiter contacts, and flags mismatches between company websites and application URLs.
+- **Job Autopsy Evidence Graph:** Synthesizes extracted fields into an interactive node-link graph mapping Title, Company, Description, Salary, Contact, Domain, and Stylometry to positive and negative risk factors.
+- **Local SHAP Feature Contributions:** When research artifacts are available, computes and displays top directional feature contributors (both risk-increasing and risk-mitigating) with exact weights.
+- **Pre-Application Completeness Audit:** Inspects presence of key transparency fields (salary structure, company profile, screening questions) to generate follow-up safety prompts.
+- **Printable Audit Report:** Provides a formatted, printable forensic summary with complete breakdown and decision-support disclaimers.
 
-- **Backend:** Python, FastAPI, scikit-learn LogisticRegression pipelines, SHAP (research explanations), and pytest.
-- **Frontend:** React, Vite, and npm.
-- **Browser integration:** Chrome extension with site adapters and a generic fallback.
-- **Data and experiments:** EMSCAD for fraud labels; a separate generated, provenance-labeled corpus for the AI-writing experiment.
+### 2. CSV Batch Screening & Insights Dashboard
+- **Automated Batch Processing:** Ingests CSV files containing up to 25 job postings and processes them through an interactive progress queue with cancellation support.
+- **Aggregated Insights Dashboard:** Summarizes batch risk breakdown with interactive count cards (High, Medium, Low, Failed) that filter the batch table on click.
+- **Signal Frequency Breakdown:** Aggregates and ranks recurring fraud indicators across the entire batch.
+- **Safe CSV Export:** Exports full batch results with formula-injection sanitization (escaping leading `=`, `+`, `-`, `@` characters).
 
-## Live demo
+### 3. Session Review Log & Multi-Job Comparative SHAP
+- **Human-in-the-Loop Tracking:** Stores reviewed postings across the session with editable reviewer notes and workflow statuses (`Pending Review`, `Verified Legitimate`, `Suspected Fraud`, `Escalated`).
+- **Side-by-Side Comparative SHAP:** Allows selecting 2 or 3 job postings to compare their feature attributions and risk vectors side-by-side in a multi-column comparative layout.
 
-No live frontend or backend URL is documented in the repository README. Use the local setup below, or configure the extension with a deployment URL supplied by the project maintainer.
+### 4. Cross-Source Listing Discrepancy Checker
+- Accepts up to 5 user-supplied cross-postings for the same role (across platforms like LinkedIn, Indeed, etc.).
+- Normalizes whitespace and casing to highlight discrepancies in job titles, claimed salaries, locations, and hiring organizations.
 
-## Local setup
+---
 
-### Requirements
-
-Use Python and Node.js/npm. The repository README does not specify version numbers or document a backend dependency installation command.
+## Technology Stack
 
 ### Backend
-
-From the repository root:
-
-```bash
-cd backend
-python -m uvicorn app.api:app --host 127.0.0.1 --port 8000 --reload
-```
-
-If the backend dependency file has a different name or the project uses another installation method, follow the files in `backend/`.
+- **Python:** Modern typed Python (tested on Python 3.10+)
+- **API Framework:** FastAPI `>=0.115`, Uvicorn `>=0.30`, Starlette
+- **Machine Learning:** Scikit-Learn `>=1.4`
+  - `LogisticRegression(max_iter=4000, class_weight="balanced")` for fraud classification
+  - `LogisticRegression(max_iter=4000, class_weight="balanced")` for stylometric text analysis
+  - `TfidfVectorizer(ngram_range=(1, 2), min_df=3, max_features=6000)`
+  - `ColumnTransformer`, `StandardScaler`, `OneHotEncoder`, `SimpleImputer`
+- **Model Explainability:** SHAP `>=0.46` (`shap.LinearExplainer`)
+- **Data Handling:** Pandas `>=2.2`, NumPy `>=1.26`, Joblib `>=1.4`
+- **Testing:** Pytest `>=8`, HTTPX `>=0.27`
 
 ### Frontend
+- **Framework:** React 18 (`react`, `react-dom` `^18.3.1`)
+- **Build Tool:** Vite `^5.4.10` (`@vitejs/plugin-react`)
+- **Typography:** Plus Jakarta Sans (headings), Inter (body), Newsreader (editorial serif), DM Mono (metrics & code)
+- **Styling:** Custom, zero-dependency responsive CSS design system with prefers-reduced-motion support
 
+### Chrome Extension
+- **Platform:** Chrome Extension Manifest V3
+- **Components:** Background Service Worker (`background.js`), Content Scripts (`content.js`), Interactive Popup (`popup.html`, `popup.js`)
+- **Extraction Adapters:** Dedicated DOM extractors for **LinkedIn, Indeed, Glassdoor, Naukri**, and a generic semantic fallback parser.
+
+---
+
+## Local Setup & Execution
+
+### Prerequisites
+- Python 3.10+
+- Node.js 18+ and npm
+
+### 1. Backend Setup
+From the repository root:
+```bash
+cd backend
+python -m venv .venv
+
+# On Windows:
+.\.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000 --reload
+```
+The FastAPI backend will start at `http://127.0.0.1:8000`. You can verify the API health at `http://127.0.0.1:8000/api/health`.
+
+### 2. Frontend Setup
 In a second terminal, from the repository root:
-
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+The Vite development server will start at `http://localhost:5173`. Open this URL in your web browser.
 
-The frontend expects the backend at `http://localhost:8000`.
-
-### Chrome extension
-
-1. Open `chrome://extensions` in Chrome and enable **Developer mode**.
-2. Choose **Load unpacked** and select the repository’s `extension/` directory.
-3. Open a supported job listing, choose **Analyze This Job**, review or edit the extracted fields, and submit the analysis.
-4. Use **API connection** in the popup to change the API endpoint when needed.
-
-The extension is user-triggered. It does not mass-scrape, auto-apply, bypass CAPTCHAs, automate login, or bypass access controls.
-
-## Training and research
-
-### Train on EMSCAD
-
-Place the dataset at `data/raw/fake_job_postings.csv`, then run from the repository root:
-
+To verify a production build:
 ```bash
-cd backend
-python -m app.train_models
+npm run build
 ```
 
-The input must contain the expected schema and a fraud label named `fraudulent` or `fraud_label`. Training generates research artifacts and metrics; these outputs are not included as verified results in this README.
+---
 
-### Create the controlled AI corpus
+## Training & Research Reproduction
 
+The repository includes demonstration data (`data/demo/demo_jobs.csv`) out of the box. To train research models on the full EMSCAD corpus:
+
+### Step 1: Place the EMSCAD Dataset
+Download the EMSCAD dataset (University of the Aegean Employment Scam Aegean Dataset) and place the CSV file at:
+```text
+data/raw/fake_job_postings.csv
+```
+The dataset must contain the standard EMSCAD schema and a documented fraud label column (`fraudulent` or `fraud_label`).
+
+### Step 2: Generate the Controlled AI Corpus
+Run the reproducible corpus generation script:
 ```bash
 cd backend
 python -m app.create_ai_corpus
 ```
+This writes `data/ai_corpus/ai_labeled_corpus.csv` containing a balanced, 40-sample controlled corpus.
 
-The generated file is `data/ai_corpus/ai_labeled_corpus.csv`. Review the corpus provenance and synthetic-data limitations before interpreting experiment results.
+### Step 3: Train the Models & Generate Metrics
+Execute model training:
+```bash
+cd backend
+python -m app.train_models
+```
+This executes:
+1. Stratified 80/20 train/test split on EMSCAD with a fixed random seed (`42`).
+2. Training of the fraud Logistic Regression pipeline (text TF-IDF + structured feature preprocessing).
+3. Extraction of background samples for `shap.LinearExplainer`.
+4. Training of the stylometric Logistic Regression model on the controlled AI corpus (75/25 split).
+5. Evaluation of an AI-aware experiment model comparing baseline fraud metrics with an augmented model incorporating the stylometric signal.
+6. Persistence of model artifacts to `backend/models/fraud_model.joblib` and `backend/models/ai_model.joblib`.
+7. Generation of research metrics to `results/experiment_summary.json`.
 
-## Environment and configuration
+After training, the API exposes live research results at `GET /api/research-results` and `/api/model-info`.
 
-The documented default is for the frontend to call `http://localhost:8000`; the extension has an API connection setting and defaults to its configured hosted API. The repository README does not identify frontend environment-variable names or document deployment URLs. Check the frontend and backend configuration files before setting deployment-specific variables.
+---
 
-## Repository layout
+## Chrome Extension
+
+The extension allows users to extract job details directly from job portals into JobShield.
+
+### Installation
+1. Open Google Chrome (or Microsoft Edge) and navigate to `chrome://extensions/`.
+2. Toggle on **Developer mode** in the top-right corner.
+3. Click **Load unpacked** and select the repository's `extension/` folder.
+4. The extension icon will appear in your browser toolbar.
+
+### Usage & Safety
+1. Navigate to a job posting on **LinkedIn, Indeed, Glassdoor, Naukri**, or any website with job markup.
+2. Click the extension icon and select **Analyze This Job**.
+3. Review and edit the extracted title, company, description, location, salary, website, and application URL in the popup.
+4. Submit the analysis to send the posting to the JobShield API.
+5. Use the **API connection** field in the popup settings if your backend runs on a custom host/port (defaults to hosted or `http://localhost:8000`).
+
+*Note on Extension Governance:* The extension is strictly user-triggered. It does not perform automated crawling, mass scraping, form auto-filling, credential harvesting, or CAPTCHA circumvention.
+
+---
+
+## Repository Layout
 
 ```text
-backend/       FastAPI API, model training, and AI-corpus generation
-data/demo/     Demonstration jobs for workflow testing
-data/raw/      Local EMSCAD input location (not bundled here)
-extension/     Chrome extension and job-site extraction adapters
-frontend/      React + Vite dashboard and analyzer
-Research artifacts and metrics are generated by real training runs
+MINPROJ/
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── api.py                  # FastAPI routes (/health, /model-info, /analyze, etc.)
+│   │   ├── config.py               # File paths, model directories, CORS origins
+│   │   ├── create_ai_corpus.py     # Controlled 40-sample synthetic AI corpus generator
+│   │   ├── data_pipeline.py        # Feature extraction, stylometry metrics, domain checks
+│   │   ├── model_service.py        # FraudAIAnalyzer service, Logistic Regression pipelines, SHAP
+│   │   ├── schemas.py              # Pydantic request and response schemas
+│   │   └── train_models.py         # Standalone model training and evaluation script
+│   ├── models/                     # Persisted joblib model artifacts (created upon training)
+│   ├── tests/
+│   │   └── test_api.py             # Test suite verifying API endpoints and contract shapes
+│   ├── requirements.txt            # Python dependencies
+│   └── runtime.txt                 # Python runtime specification
+├── data/
+│   ├── ai_corpus/
+│   │   ├── ai_labeled_corpus.csv   # Generated controlled AI corpus (40 samples)
+│   │   └── README.md               # Documentation of AI corpus provenance and methodology
+│   ├── demo/
+│   │   └── demo_jobs.csv           # Bundled demo jobs for workflow exploration
+│   └── raw/
+│       ├── fake_job_postings.csv   # Expected local path for raw EMSCAD dataset
+│       └── README.md               # Instructions for placing EMSCAD data
+├── extension/
+│   ├── adapters/
+│   │   ├── generic.js              # Generic heuristic DOM extractor
+│   │   ├── glassdoor.js            # Glassdoor-specific extractor
+│   │   ├── indeed.js               # Indeed-specific extractor
+│   │   ├── linkedin.js             # LinkedIn-specific extractor
+│   │   └── naukri.js               # Naukri-specific extractor
+│   ├── background.js               # MV3 service worker
+│   ├── content.js                  # Content script coordinating page extraction
+│   ├── manifest.json               # Chrome Extension Manifest V3 configuration
+│   ├── popup.html                  # Popup review interface
+│   ├── popup.js                    # Popup logic and API client
+│   └── styles.css                  # Extension UI styling
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx                 # Main application UI, routing, Analyzer, Batch, History
+│   │   ├── styles.css              # JobShield design system styles & editorial theme
+│   │   ├── autopsy.css             # Evidence graph styling
+│   │   ├── autopsy-interactions.css# Graph node interaction styles
+│   │   └── main.jsx                # React root entrypoint
+│   ├── index.html                  # HTML template with Google Fonts
+│   ├── package.json                # Frontend npm configuration and scripts
+│   └── vite.config.js              # Vite configuration
+├── results/
+│   └── experiment_summary.json     # Generated research metrics and confusion matrices
+└── README.md                       # Project documentation
 ```
 
-Generated training artifacts, the EMSCAD input, and research results may not be present until their respective workflows are run.
+---
 
-## Limitations and responsible use
+## Research Boundaries & Critical Limitations
 
-- Demo scores and indicators demonstrate application behavior; they are not real-world accuracy estimates.
-- Real-data metrics require a real EMSCAD training run. They are not claimed here.
-- EMSCAD does not label AI-generated content. The AI-writing experiment uses a separate controlled corpus, including synthetic fraudulent scenarios.
-- AI-writing likelihood is not fraud likelihood.
-- SHAP is available only for suitable research artifacts and is unavailable in demo mode.
-- Salary and completeness checks describe supplied fields; they do not verify market pay or establish employer legitimacy.
-- Cross-source comparisons use user-entered details and do not crawl listings or verify company identity. Salary values are not converted.
-- Job-site extraction depends on visible page content and selectors that may change.
-- Treat every result as a prompt for independent verification, not as a hiring, eligibility, or fraud determination.
+### 1. Synthetic 40-Sample AI Corpus Limitation
+- The AI stylometry classifier and AI-aware experiment in this repository are trained on a controlled synthetic corpus generated by `backend/app/create_ai_corpus.py` consisting of **exactly 40 samples**:
+  - 10 AI-generated legitimate
+  - 10 AI-generated fraudulent (synthetic scam scenarios)
+  - 10 human-authored legitimate (researcher control)
+  - 10 human-authored fraudulent (synthetic scam scenarios)
+- **Synthetic Nature:** The fraudulent text samples in this corpus represent synthetic, simulated scenarios (such as upfront payment requests and unrealistic daily rates). They do not represent real-world scam communications, nor do they originate from actual victim transcripts.
+- **Proof-of-Concept Boundary:** This corpus was created solely as a proof-of-concept to demonstrate the decoupled-signal methodology (showing how stylometric features can be extracted and modeled independently of EMSCAD).
+- **No Real-World AI Generalizability:** Results from this 40-sample corpus **must not be claimed or interpreted as a general-purpose real-world AI-text detector**. The stylometric classifier reflects only the specific templates used in the experiment and cannot reliably detect open-ended text written by modern large language models in arbitrary real-world contexts.
 
-## Future improvements
+### 2. EMSCAD Dataset Imbalance & Historical Constraints
+- EMSCAD contains 17,880 historical job postings collected around 2012–2014 by the University of the Aegean. Only 866 (4.84%) postings are fraudulent, creating a severe class imbalance (~19:1).
+- Because EMSCAD was collected prior to modern generative LLMs, it contains no native ground-truth AI authorship labels.
+- The project intentionally avoids retrofitting subjective AI labels onto EMSCAD.
 
-Potential next steps, subject to validation, include evaluating on additional representative datasets, expanding and independently validating AI-writing data, monitoring model drift, improving source verification, and making salary comparisons currency- and period-aware.
+### 3. Machine Learning Model Architecture
+- The classification pipelines use standard **Logistic Regression with balanced class weights** (`LogisticRegression(max_iter=4000, class_weight="balanced")`).
+- The models are not calibrated via probability calibration techniques (such as Platt scaling or isotonic regression); output probabilities reflect the standard logistic sigmoid transformation of decision function scores.
+
+### 4. Operational & Decision-Support Scope
+- **Not an Automated Adjudication Engine:** Predictions, SHAP bars, and risk tiers are decision-support heuristics. They do not constitute legal proof of fraud or employer illegitimacy.
+- **Salary Transparency Checks:** Salary analysis identifies intervals, currencies, and missing compensation fields; it does not benchmark compensation against verified, real-time macroeconomic wage indexes.
+- **Cross-Source Comparison:** Discrepancy checks compare only user-entered text across fields; the system does not crawl third-party databases, verify corporate registrations, or authenticate employer identities.
+- **Selector Maintenance:** Third-party job boards frequently update their DOM structures. Extension extraction relies on CSS selectors that may require ongoing maintenance.
+
+---
+
+## Testing
+
+The backend includes a comprehensive automated test suite verifying API routes, Pydantic schema validation, autopsy evidence graph integrity, path sanitization, and input rejection:
+
+```bash
+cd backend
+python -m pytest
+```
+
+---
 
 ## License
 
-No license is documented in the repository README. Check the repository for a license before reusing or redistributing this project.
+This repository does not currently specify a license, and no permission is granted to reuse or redistribute the code. In addition, review and adhere to the dataset's own terms of use and licensing (such as EMSCAD) regarding any data artifacts.
