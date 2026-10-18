@@ -1612,6 +1612,13 @@ class FraudAIAnalyzer:
                 "models/fraud_model.joblib."
             )
 
+        title = str(payload.get("title", "") or "").strip()
+        description = str(payload.get("description", "") or "").strip()
+        if not title and not description:
+            raise ValueError(
+                "At least one of 'title' or 'description' must be provided."
+            )
+
         prepared = (
             prepare_prediction_row(
                 payload

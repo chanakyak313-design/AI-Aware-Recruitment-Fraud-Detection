@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ComparisonSource(BaseModel):
@@ -26,6 +26,14 @@ class JobPayload(BaseModel):
     requirements: str = Field(default="", max_length=10000)
     benefits: str = Field(default="", max_length=10000)
     comparison_sources: list[ComparisonSource] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def validate_content_presence(self) -> "JobPayload":
+        if not self.title.strip() and not self.description.strip():
+            raise ValueError(
+                "At least one of 'title' or 'description' must be provided."
+            )
+        return self
 
 
 class AnalysisResponse(BaseModel):
