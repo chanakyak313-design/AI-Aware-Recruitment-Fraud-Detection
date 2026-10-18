@@ -186,6 +186,8 @@ class FraudAIAnalyzer:
         self.fraud_model = None
         self.ai_model = None
         self.model_summary: dict = {}
+        self._cached_shap_background = None
+        self._cached_shap_explainer = None
 
         # Production startup only loads existing artifacts.
         # It NEVER trains unless auto_train=True is explicitly supplied.
@@ -205,6 +207,9 @@ class FraudAIAnalyzer:
         This method is intentionally lightweight so Render can start
         the FastAPI application without consuming huge amounts of RAM.
         """
+
+        self._cached_shap_background = None
+        self._cached_shap_explainer = None
 
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir.mkdir(parents=True, exist_ok=True)
@@ -1053,6 +1058,12 @@ class FraudAIAnalyzer:
             compress=3,
         )
 
+        self._cached_shap_background = np.asarray(
+            shap_background,
+            dtype=np.float32,
+        )
+        self._cached_shap_explainer = None
+
         metadata = {
             "mode": mode,
             "mode_label": (
@@ -1379,7 +1390,10 @@ class FraudAIAnalyzer:
                 "features": [],
             }
 
-        if not self.shap_background_path.exists():
+        if (
+            self._cached_shap_background is None
+            and not self.shap_background_path.exists()
+        ):
             return {
                 "available": False,
                 "message": (
@@ -1403,20 +1417,22 @@ class FraudAIAnalyzer:
             ):
                 transformed = transformed.toarray()
 
-            background = np.asarray(
-                joblib.load(
-                    self.shap_background_path
-                ),
-                dtype=np.float32,
-            )
+            if self._cached_shap_background is None:
+                self._cached_shap_background = np.asarray(
+                    joblib.load(
+                        self.shap_background_path
+                    ),
+                    dtype=np.float32,
+                )
 
-            explainer = shap.LinearExplainer(
-                self.fraud_model
-                .named_steps["classifier"],
-                background,
-            )
+            if self._cached_shap_explainer is None:
+                self._cached_shap_explainer = shap.LinearExplainer(
+                    self.fraud_model
+                    .named_steps["classifier"],
+                    self._cached_shap_background,
+                )
 
-            shap_values = explainer.shap_values(
+            shap_values = self._cached_shap_explainer.shap_values(
                 np.asarray(
                     transformed,
                     dtype=np.float32,

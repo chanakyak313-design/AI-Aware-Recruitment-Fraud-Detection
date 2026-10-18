@@ -748,6 +748,16 @@ function mapCSVToJobs(csvText) {
   };
 }
 
+function sanitizeSpreadsheetVal(val) {
+  let str = String(val == null ? '' : val);
+  // Protect user-entered text against spreadsheet formula injection (CSV injection),
+  // including values that begin with whitespace followed by =, +, -, or @
+  if (/^\s*[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return str;
+}
+
 function exportBatchResultsToCSV(results, fileName) {
   const headers = [
     'Row',
@@ -764,11 +774,11 @@ function exportBatchResultsToCSV(results, fileName) {
   ];
 
   const escapeVal = (val) => {
-    const str = String(val == null ? '' : val);
-    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-      return `"${str.replace(/"/g, '""')}"`;
+    const safeStr = sanitizeSpreadsheetVal(val);
+    if (safeStr.includes(',') || safeStr.includes('"') || safeStr.includes('\n') || safeStr.includes('\r')) {
+      return `"${safeStr.replace(/"/g, '""')}"`;
     }
-    return str;
+    return safeStr;
   };
 
   const lines = [headers.map(escapeVal).join(',')];
@@ -847,16 +857,6 @@ function exportReviewLogToCSV(history = []) {
     'Review Status',
     'Review Note',
   ];
-
-  const sanitizeSpreadsheetVal = (val) => {
-    let str = String(val == null ? '' : val);
-    // Protect user-entered text against spreadsheet formula injection (CSV injection),
-    // including values that begin with whitespace followed by =, +, -, or @
-    if (/^\s*[=+\-@\t\r]/.test(str)) {
-      str = `'${str}`;
-    }
-    return str;
-  };
 
   const escapeVal = (val) => {
     const safeStr = sanitizeSpreadsheetVal(val);
