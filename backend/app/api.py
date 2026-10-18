@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import ALLOWED_ORIGINS
 from .model_service import analyzer
 from .schemas import JobPayload
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Recruitment Fraud Analyzer", version="1.0.0")
 
@@ -37,6 +41,11 @@ def analyze_job(payload: JobPayload):
     try:
         return analyzer.predict(payload.model_dump())
     except ValueError as error:
+        logger.warning("Validation error in /api/analyze: %s", error)
         raise HTTPException(status_code=422, detail=str(error)) from error
-    except Exception as error:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {error}") from error
+    except Exception:
+        logger.exception("Unexpected error occurred while analyzing job posting")
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while analyzing the job posting.",
+        )

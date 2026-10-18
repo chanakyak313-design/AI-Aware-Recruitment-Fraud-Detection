@@ -78,6 +78,58 @@ def test_analyze_rejects_malformed_and_oversized_input():
     assert client.post("/api/analyze", json=oversized).status_code == 422
 
 
+def test_analyze_rejects_empty_and_whitespace_title_and_description():
+    # Empty strings
+    res_empty = client.post("/api/analyze", json={"title": "", "description": ""})
+    assert res_empty.status_code == 422
+
+    # Whitespace only
+    res_whitespace = client.post("/api/analyze", json={"title": "   ", "description": "  \t\n  "})
+    assert res_whitespace.status_code == 422
+
+    # Empty payload
+    res_no_fields = client.post("/api/analyze", json={})
+    assert res_no_fields.status_code == 422
+
+    # Only other fields supplied
+    res_other = client.post("/api/analyze", json={"company": "Acme Corp", "location": "Remote"})
+    assert res_other.status_code == 422
+
+    # Direct model service call also raises ValueError
+    with pytest.raises(ValueError, match="At least one of 'title' or 'description'"):
+        analyzer.predict({"title": "   ", "description": ""})
+
+    # Valid if at least title is non-whitespace
+    res_title_only = client.post("/api/analyze", json={"title": "QA Engineer"})
+    assert res_title_only.status_code == 200
+
+    # Valid if at least description is non-whitespace
+    res_desc_only = client.post("/api/analyze", json={"description": "Looking for a developer."})
+    assert res_desc_only.status_code == 200
+
+
+def test_analyze_returns_generic_error_and_logs_internal_exception(monkeypatch, caplog):
+    def fake_predict(_):
+        raise RuntimeError("Internal database connection at /var/secrets/db.sqlite failed")
+
+    monkeypatch.setattr(analyzer, "predict", fake_predict)
+
+    with caplog.at_level("ERROR"):
+        res = client.post(
+            "/api/analyze",
+            json={"title": "Software Engineer", "description": "Build scalable systems."},
+        )
+
+    assert res.status_code == 500
+    body = res.json()
+    assert body["detail"] == "An error occurred while analyzing the job posting."
+    assert "secrets" not in body["detail"]
+    assert "sqlite" not in body["detail"]
+
+    # Verify detailed exception is recorded in server logs
+    assert "Internal database connection at /var/secrets/db.sqlite failed" in caplog.text
+
+
 def test_training_refuses_undocumented_fraud_labels(tmp_path):
     path = tmp_path / "unlabelled.csv"
     pd.DataFrame([{"title": "Role", "company": "Company", "description": "Work"}]).to_csv(path, index=False)
